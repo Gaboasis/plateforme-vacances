@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getEducators, updateEducator } from "@/lib/store";
 import { hashPassword } from "@/lib/auth";
+import type { Educator } from "@/types";
 
-function sanitizeEducator(e: { passwordHash?: string; [key: string]: unknown }) {
+function sanitizeEducator(e: Educator): Omit<Educator, "passwordHash"> {
   const { passwordHash: _, ...rest } = e;
   return rest;
 }
