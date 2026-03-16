@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-sage-50 text-slate-800 antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl bg-white p-6 shadow-soft border border-slate-100;
+  }
+  .card-hover {
+    @apply card transition-all duration-300 hover:shadow-soft-lg hover:border-primary-100;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-primary-500 px-5 py-2.5 font-medium text-white shadow-soft transition-all duration-200 hover:bg-primary-600 hover:shadow-glow active:scale-[0.98];
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border-2 border-primary-200 bg-white px-5 py-2.5 font-medium text-primary-600 transition-all duration-200 hover:bg-primary-50 hover:border-primary-300 active:scale-[0.98];
+  }
+  .input-field {
+    @apply w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-slate-800 placeholder:text-slate-400 transition-colors focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-sm font-medium;
+  }
+  .badge-pending {
+    @apply badge bg-amber-100 text-amber-800;
+  }
+  .badge-accepted {
+    @apply badge bg-emerald-100 text-emerald-800;
+  }
+  .badge-rejected {
+    @apply badge bg-rose-100 text-rose-800;
+  }
+}

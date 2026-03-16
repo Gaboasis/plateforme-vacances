@@ -1,0 +1,85 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Calendar, LogOut, Home, Shield } from "lucide-react";
+import type { Educator } from "@/types";
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [user, setUser] = useState<Educator | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem("user");
+    if (!stored) {
+      router.push("/");
+      return;
+    }
+    try {
+      const educator = JSON.parse(stored);
+      if (educator?.role !== "admin") {
+        router.push("/dashboard");
+        return;
+      }
+      setUser(educator);
+    } catch {
+      sessionStorage.removeItem("user");
+      router.push("/");
+    }
+  }, [router]);
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("user");
+    router.push("/");
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="min-h-screen bg-sage-50">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <Link
+            href="/admin"
+            className="flex items-center gap-2 font-display text-xl font-semibold text-slate-800"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-coral-500 text-white">
+              <Shield className="h-5 w-5" />
+            </div>
+            Admin - Gestion Vacances Les Amis Bout De Choux
+          </Link>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-right">
+              <div className="rounded-full bg-coral-100 px-2 py-0.5 text-xs font-medium text-coral-700">
+                Admin
+              </div>
+              <p className="text-sm font-medium text-slate-800">{user.name}</p>
+            </div>
+            <Link
+              href="/"
+              className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              title="Accueil"
+            >
+              <Home className="h-5 w-5" />
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-rose-50 hover:text-rose-600"
+            >
+              <LogOut className="h-4 w-4" />
+              Déconnexion
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+    </div>
+  );
+}
