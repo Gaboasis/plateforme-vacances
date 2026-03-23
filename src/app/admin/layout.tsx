@@ -42,7 +42,7 @@ export default function AdminLayout({
         .catch(() => setAppealCount(0));
     };
     fetchCount();
-    const interval = setInterval(fetchCount, 30000); // Rafraîchir toutes les 30 s
+    const interval = setInterval(fetchCount, 8 * 60 * 60 * 1000); // Rafraîchir toutes les 8 h
     return () => clearInterval(interval);
   }, []);
 
