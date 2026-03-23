@@ -6,6 +6,76 @@ import { fr } from "date-fns/locale";
 import { CalendarPlus, Clock, CheckCircle, XCircle } from "lucide-react";
 import type { Educator, VacationRequest } from "@/types";
 
+function UrgentAppealForm({
+  requestId,
+  educatorId,
+  onSuccess,
+}: {
+  requestId: string;
+  educatorId: string;
+  onSuccess: (updated: VacationRequest) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reason.trim()) return;
+    setStatus("submitting");
+    setError("");
+    try {
+      const res = await fetch(`/api/requests/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urgentAppealReason: reason.trim(), educatorId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStatus("success");
+        onSuccess(data);
+      } else {
+        setStatus("error");
+        setError(data.error || "Erreur lors de l'envoi");
+      }
+    } catch {
+      setStatus("error");
+      setError("Erreur de connexion");
+    }
+  };
+
+  return (
+    <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
+      <p className="mb-3 text-sm font-medium text-amber-900">
+        S&apos;il y a une urgence motivée, décrivez la raison. L&apos;administration
+        l&apos;évaluera directement sur la plateforme.
+      </p>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Ex: Décès dans la famille, urgence médicale..."
+          className="input-field min-h-[80px] resize-none"
+          rows={3}
+          disabled={status === "submitting" || status === "success"}
+        />
+        {status === "error" && (
+          <p className="text-sm text-rose-600">{error}</p>
+        )}
+        {status !== "success" && (
+          <button
+            type="submit"
+            disabled={!reason.trim() || status === "submitting"}
+            className="btn-primary"
+          >
+            {status === "submitting" ? "Envoi..." : "Soumettre à l'administration"}
+          </button>
+        )}
+      </form>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [user, setUser] = useState<Educator | null>(null);
   const [requests, setRequests] = useState<VacationRequest[]>([]);
@@ -16,14 +86,15 @@ export default function DashboardPage() {
     "idle" | "success" | "pending" | "rejected" | "error"
   >("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const [urgentReason, setUrgentReason] = useState("");
   const [lastRejectedContext, setLastRejectedContext] = useState<{
+    requestId?: string;
     educatorName: string;
     startDate: string;
     endDate: string;
     reason?: string;
     rejectionReason?: string;
   } | null>(null);
+  const [expandedAppealFor, setExpandedAppealFor] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("user");
@@ -82,6 +153,7 @@ export default function DashboardPage() {
       const isRejected = !data.accepted && !data.pending;
       if (isRejected && data.request) {
         setLastRejectedContext({
+          requestId: data.request.id,
           educatorName: data.request.educatorName,
           startDate: data.request.startDate,
           endDate: data.request.endDate,
@@ -90,7 +162,6 @@ export default function DashboardPage() {
         });
       } else {
         setLastRejectedContext(null);
-        setUrgentReason("");
       }
       if (!isRejected) {
         setForm({ startDate: "", endDate: "", reason: "" });
@@ -152,7 +223,6 @@ export default function DashboardPage() {
             setSubmitStatus("idle");
             setErrorMessage("");
             setLastRejectedContext(null);
-            setUrgentReason("");
           }}
           className="btn-primary flex items-center gap-2"
         >
@@ -217,7 +287,6 @@ export default function DashboardPage() {
                   setSubmitStatus("idle");
                   setErrorMessage("");
                   setLastRejectedContext(null);
-                  setUrgentReason("");
                 }}
                 className="btn-secondary"
               >
@@ -240,42 +309,29 @@ export default function DashboardPage() {
           mises à jour.
         </div>
       )}
-      {(submitStatus === "rejected" || submitStatus === "error") && (
+      {(submitStatus === "rejected" || submitStatus === "error") &&
+        lastRejectedContext?.requestId && (
         <div className="space-y-4">
           <div className="rounded-xl bg-rose-50 p-4 text-rose-800 text-sm">
             Votre demande n&apos;a pas pu être acceptée : {errorMessage}
           </div>
-          <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
-            <p className="mb-3 text-sm font-medium text-amber-900">
-              S&apos;il y a une urgence motivée, veuillez écrire en quelques mots
-              la raison de votre demande. L&apos;administration va évaluer.
-            </p>
-            <textarea
-              value={urgentReason}
-              onChange={(e) => setUrgentReason(e.target.value)}
-              placeholder="Ex: Décès dans la famille, urgence médicale..."
-              className="input-field min-h-[80px] resize-none mb-3"
-              rows={3}
-            />
-            <a
-              href={
-                lastRejectedContext
-                  ? `mailto:gabenfance@gmail.com?subject=${encodeURIComponent(
-                      `Demande urgente - ${lastRejectedContext.educatorName} (${lastRejectedContext.startDate} - ${lastRejectedContext.endDate})`
-                    )}&body=${encodeURIComponent(
-                      `Demande de congés refusée.\n\nPériode : ${lastRejectedContext.startDate} au ${lastRejectedContext.endDate}\nMotif refus : ${lastRejectedContext.rejectionReason || "Non spécifié"}\n\n--- Raison de l'urgence motivée ---\n\n${urgentReason || "(À compléter)"}`
-                    )}`
-                  : `mailto:gabenfance@gmail.com?subject=${encodeURIComponent(
-                      `Demande urgente - ${user?.name || "Utilisateur"}`
-                    )}&body=${encodeURIComponent(
-                      `Demande de congés non traitée.\n\n--- Raison de l'urgence motivée ---\n\n${urgentReason || "(À compléter)"}`
-                    )}`
-              }
-              className="btn-primary inline-flex"
-            >
-              Soumettre
-            </a>
-          </div>
+          <UrgentAppealForm
+            requestId={lastRejectedContext.requestId}
+            educatorId={user.id}
+            onSuccess={(updated) => {
+              setRequests((prev) =>
+                prev.map((r) => (r.id === updated.id ? updated : r))
+              );
+              setLastRejectedContext(null);
+              setSubmitStatus("idle");
+            }}
+          />
+        </div>
+      )}
+      {(submitStatus === "rejected" || submitStatus === "error") &&
+        !lastRejectedContext?.requestId && (
+        <div className="rounded-xl bg-rose-50 p-4 text-rose-800 text-sm">
+          Votre demande n&apos;a pas pu être acceptée : {errorMessage}
         </div>
       )}
 
@@ -316,17 +372,39 @@ export default function DashboardPage() {
                       Motif : {req.rejectionReason}
                     </p>
                   )}
-                  {req.status === "rejected" && (
-                    <a
-                      href={`mailto:gabenfance@gmail.com?subject=${encodeURIComponent(
-                        `Demande urgente - ${req.educatorName} (${req.startDate} - ${req.endDate})`
-                      )}&body=${encodeURIComponent(
-                        `Demande de congés refusée.\n\nPériode : ${req.startDate} au ${req.endDate}\nMotif refus : ${req.rejectionReason || "Non spécifié"}\n\n--- Raison de l'urgence motivée ---\n\n(À compléter)`
-                      )}`}
-                      className="mt-2 inline-block text-sm font-medium text-primary-600 hover:underline"
-                    >
-                      Urgence motivée ? Contactez l&apos;administration
-                    </a>
+                  {req.status === "rejected" && req.urgentAppealReason && !req.appealReviewedAt && (
+                    <p className="mt-2 text-sm text-amber-700">
+                      Appel soumis, en attente d&apos;évaluation par l&apos;administration
+                    </p>
+                  )}
+                  {req.status === "rejected" && req.appealReviewedAt && (
+                    <p className="mt-2 text-sm text-slate-500">
+                      Appel refusé par l&apos;administration
+                    </p>
+                  )}
+                  {req.status === "rejected" && !req.urgentAppealReason && user && (
+                    <div className="mt-2">
+                      {expandedAppealFor === req.id ? (
+                        <UrgentAppealForm
+                          requestId={req.id}
+                          educatorId={user.id}
+                          onSuccess={(updated) => {
+                            setRequests((prev) =>
+                              prev.map((r) => (r.id === updated.id ? updated : r))
+                            );
+                            setExpandedAppealFor(null);
+                          }}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedAppealFor(req.id)}
+                          className="text-sm font-medium text-primary-600 hover:underline"
+                        >
+                          Urgence motivée ? Soumettre à l&apos;administration
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
                 <StatusBadge status={req.status} />

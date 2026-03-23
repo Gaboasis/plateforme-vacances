@@ -126,23 +126,34 @@ export default function AdminPage() {
     status: VacationRequest["status"],
     rejectionReason?: string
   ) => {
-    await fetch(`/api/requests/${id}`, {
+    const res = await fetch(`/api/requests/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, rejectionReason }),
     });
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              status,
-              rejectionReason: rejectionReason || r.rejectionReason,
-              reviewedAt: new Date().toISOString(),
-            }
-          : r
-      )
-    );
+    const updated = res.ok ? await res.json() : null;
+    if (updated) {
+      setRequests((prev) =>
+        prev.map((r) => (r.id === id ? updated : r))
+      );
+    } else {
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                status,
+                rejectionReason: rejectionReason || r.rejectionReason,
+                reviewedAt: new Date().toISOString(),
+                appealReviewedAt:
+                  r.urgentAppealReason && !r.appealReviewedAt
+                    ? new Date().toISOString()
+                    : r.appealReviewedAt,
+              }
+            : r
+        )
+      );
+    }
   };
 
   const addBlackoutDate = () => {
@@ -201,6 +212,12 @@ export default function AdminPage() {
   }
 
   const pendingCount = requests.filter((r) => r.status === "pending").length;
+  const appealPendingCount = requests.filter(
+    (r) =>
+      r.status === "rejected" &&
+      r.urgentAppealReason &&
+      !r.appealReviewedAt
+  ).length;
 
   return (
     <div className="space-y-8">
@@ -213,16 +230,17 @@ export default function AdminPage() {
         </p>
       </div>
 
-      {pendingCount > 0 && (
+      {(pendingCount > 0 || appealPendingCount > 0) && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="font-medium text-amber-800">
-            ⚠️ {pendingCount} demande{pendingCount > 1 ? "s" : ""} en attente
-            d&apos;évaluation
+            ⚠️ {pendingCount > 0 && `${pendingCount} demande${pendingCount > 1 ? "s" : ""} en attente`}
+            {pendingCount > 0 && appealPendingCount > 0 && " • "}
+            {appealPendingCount > 0 && `${appealPendingCount} urgence${appealPendingCount > 1 ? "s" : ""} motivée${appealPendingCount > 1 ? "s" : ""} à traiter`}
           </p>
           <p className="mt-1 text-sm text-amber-700">
-            Ces demandes concernent la dernière place autorisée pour une période
-            (3 ou 4 personnes). Acceptez ou refusez-les depuis l&apos;onglet
-            Demandes.
+            {pendingCount > 0 && "Ces demandes concernent la dernière place autorisée. "}
+            {appealPendingCount > 0 && "Des éducatrices ont soumis une raison d'urgence. "}
+            Acceptez ou refusez depuis l&apos;onglet Demandes.
           </p>
           <button
             onClick={() => setActiveTab("requests")}
@@ -245,9 +263,9 @@ export default function AdminPage() {
         >
           <Calendar className="h-4 w-4" />
           Demandes ({requests.length})
-          {pendingCount > 0 && (
+          {(pendingCount > 0 || appealPendingCount > 0) && (
             <span className="ml-1 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-medium text-white">
-              {pendingCount} à traiter
+              {pendingCount + appealPendingCount} à traiter
             </span>
           )}
         </button>
@@ -312,10 +330,21 @@ export default function AdminPage() {
                         {req.rejectionReason}
                       </p>
                     )}
+                    {req.status === "rejected" && req.urgentAppealReason && !req.appealReviewedAt && (
+                      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-medium text-amber-800 mb-1">
+                          Urgence motivée :
+                        </p>
+                        <p className="text-sm text-amber-900">
+                          {req.urgentAppealReason}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-end gap-3">
                     <StatusBadge status={req.status} />
-                    {req.status === "pending" && (
+                    {(req.status === "pending" ||
+                      (req.status === "rejected" && req.urgentAppealReason && !req.appealReviewedAt)) && (
                       <div className="flex gap-2">
                         <button
                           onClick={() =>
@@ -327,7 +356,7 @@ export default function AdminPage() {
                         </button>
                         <button
                           onClick={() =>
-                            handleUpdateRequestStatus(req.id, "rejected", "Refus manuel")
+                            handleUpdateRequestStatus(req.id, "rejected", "Appel refusé")
                           }
                           className="rounded-lg bg-rose-100 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-200"
                         >

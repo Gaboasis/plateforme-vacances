@@ -21,16 +21,18 @@ model Educator {
 }
 
 model VacationRequest {
-  id              String    @id @default(cuid())
-  educatorId      String
-  educatorName    String
-  startDate       DateTime
-  endDate        DateTime
-  reason          String?
-  status          String    // "pending" | "accepted" | "rejected"
-  rejectionReason String?
-  createdAt       DateTime  @default(now())
-  reviewedAt      DateTime?
+  id                  String    @id @default(cuid())
+  educatorId          String
+  educatorName        String
+  startDate           DateTime
+  endDate             DateTime
+  reason              String?
+  status              String    // "pending" | "accepted" | "rejected"
+  rejectionReason     String?
+  urgentAppealReason  String?   // Raison d'urgence soumise par l'éducatrice
+  appealReviewedAt    DateTime? // Quand l'admin a traité l'appel
+  createdAt           DateTime  @default(now())
+  reviewedAt          DateTime?
 }
 
 model VacationRulesConfig {

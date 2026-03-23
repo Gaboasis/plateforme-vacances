@@ -30,6 +30,8 @@ function requestToType(req: {
   reason: string | null;
   status: string;
   rejectionReason: string | null;
+  urgentAppealReason: string | null;
+  appealReviewedAt: Date | null;
   createdAt: Date;
   reviewedAt: Date | null;
 }): VacationRequest {
@@ -42,6 +44,8 @@ function requestToType(req: {
     reason: req.reason ?? undefined,
     status: req.status as VacationRequest["status"],
     rejectionReason: req.rejectionReason ?? undefined,
+    urgentAppealReason: req.urgentAppealReason ?? undefined,
+    appealReviewedAt: req.appealReviewedAt?.toISOString(),
     createdAt: req.createdAt.toISOString(),
     reviewedAt: req.reviewedAt?.toISOString(),
   };
@@ -150,6 +154,8 @@ export async function updateVacationRequest(
   const data: Record<string, unknown> = {};
   if (updates.status != null) data.status = updates.status;
   if (updates.rejectionReason != null) data.rejectionReason = updates.rejectionReason;
+  if (updates.urgentAppealReason != null) data.urgentAppealReason = updates.urgentAppealReason;
+  if (updates.appealReviewedAt != null) data.appealReviewedAt = new Date(updates.appealReviewedAt);
   if (updates.status && updates.status !== "pending") {
     data.reviewedAt = new Date();
   }

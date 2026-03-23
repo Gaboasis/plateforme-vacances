@@ -24,6 +24,10 @@ export interface VacationRequest {
   createdAt: string;
   reviewedAt?: string;
   rejectionReason?: string;
+  /** Raison d'urgence motivée soumise par l'éducatrice */
+  urgentAppealReason?: string;
+  /** Date de traitement de l'appel par l'admin */
+  appealReviewedAt?: string;
 }
 
 /** Règles pour une semaine - index 0-51 = semaines 1-52, appliquées à chaque jour */
