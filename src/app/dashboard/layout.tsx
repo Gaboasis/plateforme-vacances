@@ -88,53 +88,52 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-sage-50">
       {isAdminAccess && (
-        <div className="sticky top-0 z-20 flex items-center justify-between gap-4 bg-amber-100 px-6 py-2 text-amber-900">
-          <span className="text-sm font-medium">
-            Accès admin au compte de {user.name}
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-2 sm:gap-4 bg-amber-100 px-4 sm:px-6 py-2 text-amber-900">
+          <span className="text-xs sm:text-sm font-medium truncate">
+            Accès admin : {user.name}
           </span>
           <button
             onClick={handleBackToAdmin}
-            className="flex items-center gap-1 rounded-lg bg-amber-200 px-3 py-1.5 text-sm font-medium hover:bg-amber-300"
+            className="flex shrink-0 items-center gap-1 rounded-lg bg-amber-200 px-2.5 py-1.5 sm:px-3 text-xs sm:text-sm font-medium hover:bg-amber-300 touch-manipulation"
           >
-            <ArrowLeft className="h-4 w-4" /> Retour à l&apos;admin
+            <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Retour
           </button>
         </div>
       )}
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 sm:px-6 py-3 sm:py-4">
           <Link
             href={user.role === "admin" ? "/admin" : "/dashboard"}
-            className="flex items-center gap-2 font-display text-xl font-semibold text-slate-800"
+            className="flex min-w-0 items-center gap-2 font-display font-semibold text-slate-800"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-500 text-white">
-              <Calendar className="h-5 w-5" />
+            <div className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white">
+              <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
-            Gestion Vacances Les Amis Bout De Choux
+            <span className="truncate text-base sm:text-xl">Les Amis Bout De Choux</span>
           </Link>
 
-          <div className="flex items-center gap-4">
-            <p className="text-sm font-medium text-slate-800">{user.name}</p>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <p className="hidden sm:block text-sm font-medium text-slate-800">{user.name}</p>
             <button
               onClick={() => setShowPasswordModal(true)}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              className="rounded-lg p-2.5 sm:px-3 sm:py-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-700 touch-manipulation"
               title="Changer le mot de passe"
             >
-              <Lock className="h-4 w-4" />
-              Mot de passe
+              <Lock className="h-5 w-5" />
             </button>
             <Link
               href="/"
-              className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              className="rounded-lg p-2.5 sm:p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 touch-manipulation"
               title="Accueil"
             >
               <Home className="h-5 w-5" />
             </Link>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-rose-50 hover:text-rose-600"
+              className="flex items-center gap-1.5 sm:gap-2 rounded-lg px-2.5 py-2 sm:px-3 text-sm text-slate-600 transition-colors hover:bg-rose-50 hover:text-rose-600 touch-manipulation"
             >
-              <LogOut className="h-4 w-4" />
-              Déconnexion
+              <LogOut className="h-4 w-4 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Déconnexion</span>
             </button>
           </div>
         </div>
@@ -210,7 +209,7 @@ export default function DashboardLayout({
         </div>
       )}
 
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-4 sm:py-8">{children}</main>
     </div>
   );
 }

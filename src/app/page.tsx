@@ -77,30 +77,30 @@ export default function HomePage() {
       {/* Hero Section */}
       <div className="relative overflow-hidden bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.05\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-40" />
-        <div className="relative mx-auto max-w-6xl px-6 py-20 sm:py-28">
+        <div className="relative mx-auto max-w-6xl px-4 pt-8 pb-12 sm:px-6 sm:py-20 md:py-28">
           <div className="text-center">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm">
-              <Palette className="h-4 w-4" />
+            <div className="mb-3 sm:mb-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-white backdrop-blur-sm">
+              <Palette className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Gestion simplifiée des congés
             </div>
-            <h1 className="font-display text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl">
+            <h1 className="font-display text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
               Gestion Vacances Les Amis Bout De Choux
             </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-primary-100">
-              Demandez vos congés en quelques clics. Simple, rapide et transparent.
+            <p className="mx-auto mt-3 sm:mt-6 max-w-2xl text-sm sm:text-lg text-primary-100 px-2">
+              Demandez vos congés en quelques clics.
             </p>
           </div>
         </div>
       </div>
 
       {/* Login Card */}
-      <div className="flex-1 -mt-16 px-6 pb-20">
+      <div className="flex-1 -mt-8 sm:-mt-16 px-4 sm:px-6 pb-12 sm:pb-20">
         <div className="mx-auto max-w-4xl">
-          <div className="card-hover rounded-3xl p-8">
-            <h2 className="font-display text-xl font-semibold text-slate-800 mb-2">
+          <div className="card-hover rounded-2xl sm:rounded-3xl p-4 sm:p-8">
+            <h2 className="font-display text-lg sm:text-xl font-semibold text-slate-800 mb-1 sm:mb-2">
               Connectez-vous
             </h2>
-            <p className="text-center text-base font-bold text-red-600 mb-6 no-underline">
+            <p className="text-center text-sm sm:text-base font-bold text-red-600 mb-4 sm:mb-6 no-underline">
               Sélectionnez votre profil et entrez votre mot de passe
             </p>
 
@@ -110,12 +110,12 @@ export default function HomePage() {
               </p>
             )}
 
-            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3 mb-6">
+            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-3 mb-4 sm:mb-6">
               {educators.map((e) => (
                 <button
                   key={e.id}
                   onClick={() => setSelectedId(e.id)}
-                  className={`relative flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all ${
+                  className={`relative flex flex-col items-center gap-1.5 sm:gap-2 rounded-xl border-2 p-2 sm:p-3 transition-all min-h-[72px] sm:min-h-0 touch-manipulation ${
                     selectedId === e.id
                       ? "border-primary-500 bg-primary-50"
                       : "border-slate-200 hover:border-primary-200 hover:bg-slate-50"
@@ -123,7 +123,7 @@ export default function HomePage() {
                 >
                   <div className="relative">
                     <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                      className={`flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full ${
                         e.role === "admin"
                           ? "bg-coral-500/20 text-coral-600"
                           : e.role === "cuisiniere"
@@ -153,14 +153,14 @@ export default function HomePage() {
                       </span>
                     )}
                   </div>
-                  <p className="font-medium text-slate-800 text-sm text-center leading-tight truncate w-full">
+                  <p className="font-medium text-slate-800 text-xs sm:text-sm text-center leading-tight truncate w-full">
                     {e.name}
                   </p>
                 </button>
               ))}
             </div>
 
-            <div className="mb-6">
+            <div className="mb-4 sm:mb-6">
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Mot de passe
               </label>

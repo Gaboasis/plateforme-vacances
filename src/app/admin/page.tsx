@@ -220,18 +220,18 @@ export default function AdminPage() {
   ).length;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <div>
-        <h1 className="font-display text-2xl font-bold text-slate-800">
+        <h1 className="font-display text-xl sm:text-2xl font-bold text-slate-800">
           Administration
         </h1>
-        <p className="mt-1 text-slate-500">
+        <p className="mt-1 text-sm sm:text-base text-slate-500">
           Gérez les demandes de congés et configurez les règles
         </p>
       </div>
 
       {(pendingCount > 0 || appealPendingCount > 0) && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 sm:p-4">
           <p className="font-medium text-amber-800">
             ⚠️ {pendingCount > 0 && `${pendingCount} demande${pendingCount > 1 ? "s" : ""} en attente`}
             {pendingCount > 0 && appealPendingCount > 0 && " • "}
@@ -252,10 +252,10 @@ export default function AdminPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200">
+      <div className="flex gap-2 overflow-x-auto border-b border-slate-200 pb-px -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
         <button
           onClick={() => setActiveTab("requests")}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
             activeTab === "requests"
               ? "border-primary-500 text-primary-600"
               : "border-transparent text-slate-500 hover:text-slate-700"
@@ -271,7 +271,7 @@ export default function AdminPage() {
         </button>
         <button
           onClick={() => setActiveTab("rules")}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
             activeTab === "rules"
               ? "border-primary-500 text-primary-600"
               : "border-transparent text-slate-500 hover:text-slate-700"
@@ -282,7 +282,7 @@ export default function AdminPage() {
         </button>
         <button
           onClick={() => setActiveTab("educators")}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
             activeTab === "educators"
               ? "border-primary-500 text-primary-600"
               : "border-transparent text-slate-500 hover:text-slate-700"
@@ -305,7 +305,7 @@ export default function AdminPage() {
               {requests.map((req) => (
                 <div
                   key={req.id}
-                  className="card-hover flex flex-col gap-4 sm:flex-row sm:items-center justify-between"
+                  className="card-hover flex flex-col gap-4 p-4 sm:p-6 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex-1">
                     <p className="font-medium text-slate-800">
@@ -341,16 +341,16 @@ export default function AdminPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col items-end gap-3">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-2">
                     <StatusBadge status={req.status} />
                     {(req.status === "pending" ||
                       (req.status === "rejected" && req.urgentAppealReason && !req.appealReviewedAt)) && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button
                           onClick={() =>
                             handleUpdateRequestStatus(req.id, "accepted")
                           }
-                          className="rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-200"
+                          className="rounded-lg bg-emerald-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-200 touch-manipulation min-h-[44px] sm:min-h-0"
                         >
                           Accepter
                         </button>
@@ -358,7 +358,7 @@ export default function AdminPage() {
                           onClick={() =>
                             handleUpdateRequestStatus(req.id, "rejected", "Appel refusé")
                           }
-                          className="rounded-lg bg-rose-100 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-200"
+                          className="rounded-lg bg-rose-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-200 touch-manipulation min-h-[44px] sm:min-h-0"
                         >
                           Refuser
                         </button>

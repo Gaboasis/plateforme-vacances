@@ -45,7 +45,7 @@ function UrgentAppealForm({
   };
 
   return (
-    <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
+    <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-3 sm:p-4">
       <p className="mb-3 text-sm font-medium text-amber-900">
         S&apos;il y a une urgence motivée, décrivez la raison. L&apos;administration
         l&apos;évaluera directement sur la plateforme.
@@ -205,12 +205,12 @@ export default function DashboardPage() {
   if (!user) return null;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <div>
-        <h1 className="font-display text-2xl font-bold text-slate-800">
+        <h1 className="font-display text-xl sm:text-2xl font-bold text-slate-800">
           Bonjour, {user.name} 👋
         </h1>
-        <p className="mt-1 text-slate-500">
+        <p className="mt-1 text-sm sm:text-base text-slate-500">
           Gérez vos demandes de congés en un clin d&apos;œil
         </p>
       </div>
@@ -224,14 +224,14 @@ export default function DashboardPage() {
             setErrorMessage("");
             setLastRejectedContext(null);
           }}
-          className="btn-primary flex items-center gap-2"
+          className="btn-primary flex items-center gap-2 w-full sm:w-auto"
         >
-          <CalendarPlus className="h-5 w-5" />
+          <CalendarPlus className="h-5 w-5 shrink-0" />
           Nouvelle demande
         </button>
       ) : (
-        <div className="card rounded-2xl">
-          <h2 className="font-display text-lg font-semibold text-slate-800 mb-4">
+        <div className="card rounded-2xl p-4 sm:p-6">
+          <h2 className="font-display text-base sm:text-lg font-semibold text-slate-800 mb-4">
             Nouvelle demande de congés
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -276,8 +276,8 @@ export default function DashboardPage() {
             {submitStatus === "error" && (
               <p className="text-sm text-rose-600">{errorMessage}</p>
             )}
-            <div className="flex gap-3">
-              <button type="submit" className="btn-primary">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button type="submit" className="btn-primary flex-1 sm:flex-none">
                 Envoyer la demande
               </button>
               <button
@@ -337,7 +337,7 @@ export default function DashboardPage() {
 
       {/* Liste des demandes */}
       <div>
-        <h2 className="font-display text-lg font-semibold text-slate-800 mb-4">
+        <h2 className="font-display text-base sm:text-lg font-semibold text-slate-800 mb-4">
           Mes demandes
         </h2>
         {loading ? (
@@ -357,12 +357,12 @@ export default function DashboardPage() {
             {requests.map((req) => (
               <div
                 key={req.id}
-                className="card-hover flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                className="card-hover flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-6"
               >
-                <div>
-                  <p className="font-medium text-slate-800">
-                    {format(parseISO(req.startDate), "d MMMM yyyy", { locale: fr })} —{" "}
-                    {format(parseISO(req.endDate), "d MMMM yyyy", { locale: fr })}
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-slate-800 text-sm sm:text-base">
+                    {format(parseISO(req.startDate), "d MMM yyyy", { locale: fr })} —{" "}
+                    {format(parseISO(req.endDate), "d MMM yyyy", { locale: fr })}
                   </p>
                   {req.reason && (
                     <p className="mt-1 text-sm text-slate-500">{req.reason}</p>
@@ -407,7 +407,9 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
-                <StatusBadge status={req.status} />
+                <div className="shrink-0 self-start sm:self-center">
+                  <StatusBadge status={req.status} />
+                </div>
               </div>
             ))}
           </div>
