@@ -101,7 +101,7 @@ export default function DashboardLayout({
         </div>
       )}
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 sm:px-6 py-3 sm:py-4">
+        <div className="mx-auto flex max-w-6xl w-full items-center justify-between gap-2 py-3 sm:py-4 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:pl-6 sm:pr-6">
           <Link
             href={user.role === "admin" ? "/admin" : "/dashboard"}
             className="flex min-w-0 items-center gap-2 font-display font-semibold text-slate-800"
@@ -209,7 +209,7 @@ export default function DashboardLayout({
         </div>
       )}
 
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-4 sm:py-8">{children}</main>
+      <main className="mx-auto w-full max-w-6xl py-4 sm:py-8 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:pl-6 sm:pr-6">{children}</main>
     </div>
   );
 }

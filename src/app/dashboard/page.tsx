@@ -230,13 +230,13 @@ export default function DashboardPage() {
           Nouvelle demande
         </button>
       ) : (
-        <div className="card rounded-2xl p-4 sm:p-6">
+        <div className="card rounded-2xl p-4 sm:p-6 w-full max-w-full overflow-hidden">
           <h2 className="font-display text-base sm:text-lg font-semibold text-slate-800 mb-4">
             Nouvelle demande de congés
           </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
+          <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-full">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 w-full">
+              <div className="w-full min-w-0">
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Date de début
                 </label>
@@ -245,10 +245,10 @@ export default function DashboardPage() {
                   required
                   value={form.startDate}
                   onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
-                  className="input-field"
+                  className="input-field w-full"
                 />
               </div>
-              <div>
+              <div className="w-full min-w-0">
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Date de fin
                 </label>
@@ -257,7 +257,7 @@ export default function DashboardPage() {
                   required
                   value={form.endDate}
                   onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
-                  className="input-field"
+                  className="input-field w-full"
                 />
               </div>
             </div>
