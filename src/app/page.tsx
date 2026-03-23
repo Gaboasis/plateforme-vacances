@@ -28,6 +28,7 @@ export default function HomePage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [appealCount, setAppealCount] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -35,6 +36,13 @@ export default function HomePage() {
       .then((r) => r.json())
       .then((data) => setEducators(Array.isArray(data) && data.length > 0 ? data : FALLBACK_EDUCATORS))
       .catch(() => setEducators(FALLBACK_EDUCATORS));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/admin/pending-appeals")
+      .then((r) => r.json())
+      .then((data) => setAppealCount(data?.count ?? 0))
+      .catch(() => setAppealCount(0));
   }, []);
 
   const handleLogin = async () => {
@@ -107,35 +115,42 @@ export default function HomePage() {
                 <button
                   key={e.id}
                   onClick={() => setSelectedId(e.id)}
-                  className={`flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all ${
+                  className={`relative flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all ${
                     selectedId === e.id
                       ? "border-primary-500 bg-primary-50"
                       : "border-slate-200 hover:border-primary-200 hover:bg-slate-50"
                   }`}
                 >
-                  <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                      e.role === "admin"
-                        ? "bg-coral-500/20 text-coral-600"
-                        : e.role === "cuisiniere"
-                        ? "bg-amber-500/20 text-amber-600"
-                        : e.role === "entretien"
-                        ? "bg-teal-500/20 text-teal-600"
-                        : e.role === "secretaire"
-                        ? "bg-violet-500/20 text-violet-600"
-                        : "bg-primary-500/20 text-primary-600"
-                    }`}
-                  >
-                    {e.role === "admin" ? (
-                      <Shield className="h-5 w-5" />
-                    ) : e.role === "cuisiniere" ? (
-                      <UtensilsCrossed className="h-5 w-5" />
-                    ) : e.role === "entretien" ? (
-                      <Sparkles className="h-5 w-5" />
-                    ) : e.role === "secretaire" ? (
-                      <FileText className="h-5 w-5" />
-                    ) : (
-                      <User className="h-5 w-5" />
+                  <div className="relative">
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                        e.role === "admin"
+                          ? "bg-coral-500/20 text-coral-600"
+                          : e.role === "cuisiniere"
+                          ? "bg-amber-500/20 text-amber-600"
+                          : e.role === "entretien"
+                          ? "bg-teal-500/20 text-teal-600"
+                          : e.role === "secretaire"
+                          ? "bg-violet-500/20 text-violet-600"
+                          : "bg-primary-500/20 text-primary-600"
+                      }`}
+                    >
+                      {e.role === "admin" ? (
+                        <Shield className="h-5 w-5" />
+                      ) : e.role === "cuisiniere" ? (
+                        <UtensilsCrossed className="h-5 w-5" />
+                      ) : e.role === "entretien" ? (
+                        <Sparkles className="h-5 w-5" />
+                      ) : e.role === "secretaire" ? (
+                        <FileText className="h-5 w-5" />
+                      ) : (
+                        <User className="h-5 w-5" />
+                      )}
+                    </div>
+                    {e.role === "admin" && appealCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow-md">
+                        {appealCount > 99 ? "99+" : appealCount}
+                      </span>
                     )}
                   </div>
                   <p className="font-medium text-slate-800 text-sm text-center leading-tight truncate w-full">

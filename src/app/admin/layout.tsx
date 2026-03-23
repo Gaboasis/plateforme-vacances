@@ -12,6 +12,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const [user, setUser] = useState<Educator | null>(null);
+  const [appealCount, setAppealCount] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -32,6 +33,18 @@ export default function AdminLayout({
       router.push("/");
     }
   }, [router]);
+
+  useEffect(() => {
+    const fetchCount = () => {
+      fetch("/api/admin/pending-appeals")
+        .then((r) => r.json())
+        .then((data) => setAppealCount(data?.count ?? 0))
+        .catch(() => setAppealCount(0));
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 30000); // Rafraîchir toutes les 30 s
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = () => {
     sessionStorage.removeItem("user");
@@ -56,8 +69,15 @@ export default function AdminLayout({
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-right">
-              <div className="rounded-full bg-coral-100 px-2 py-0.5 text-xs font-medium text-coral-700">
-                Admin
+              <div className="relative inline-flex">
+                <div className="rounded-full bg-coral-100 px-2 py-0.5 text-xs font-medium text-coral-700">
+                  Admin
+                </div>
+                {appealCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow-md">
+                    {appealCount > 99 ? "99+" : appealCount}
+                  </span>
+                )}
               </div>
               <p className="text-sm font-medium text-slate-800">{user.name}</p>
             </div>

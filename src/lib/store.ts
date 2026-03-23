@@ -186,3 +186,15 @@ export async function getVacationRequestById(id: string): Promise<VacationReques
   });
   return req ? requestToType(req) : null;
 }
+
+/** Nombre d'urgences motivées en attente d'évaluation par l'admin */
+export async function getPendingAppealsCount(): Promise<number> {
+  const count = await prisma.vacationRequest.count({
+    where: {
+      status: "rejected",
+      urgentAppealReason: { not: null },
+      appealReviewedAt: null,
+    },
+  });
+  return count;
+}
