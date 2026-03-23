@@ -73,28 +73,30 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700">
+    <div className="min-h-screen min-h-[100dvh] flex flex-col">
+      {/* Hero Section - compact sur mobile pour iPhone */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 pt-[env(safe-area-inset-top)]">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.05\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-40" />
-        <div className="relative mx-auto max-w-6xl px-4 pt-8 pb-12 sm:px-6 sm:py-20 md:py-28">
+        <div className="relative mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-20 md:py-28">
           <div className="text-center">
-            <div className="mb-3 sm:mb-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-white backdrop-blur-sm">
+            <div className="mb-2 sm:mb-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-white backdrop-blur-sm">
               <Palette className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              Gestion simplifiée des congés
+              <span className="hidden sm:inline">Gestion simplifiée des congés</span>
+              <span className="sm:hidden">Congés</span>
             </div>
-            <h1 className="font-display text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
-              Gestion Vacances Les Amis Bout De Choux
+            <h1 className="font-display text-lg sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
+              <span className="sm:hidden">Les Amis Bout De Choux</span>
+              <span className="hidden sm:inline">Gestion Vacances Les Amis Bout De Choux</span>
             </h1>
-            <p className="mx-auto mt-3 sm:mt-6 max-w-2xl text-sm sm:text-lg text-primary-100 px-2">
+            <p className="mx-auto mt-1 sm:mt-6 max-w-2xl text-xs sm:text-lg text-primary-100 px-2 sm:block hidden">
               Demandez vos congés en quelques clics.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Login Card */}
-      <div className="flex-1 -mt-8 sm:-mt-16 px-4 sm:px-6 pb-12 sm:pb-20">
+      {/* Login Card - visible dès le chargement sur mobile */}
+      <div className="flex-1 -mt-4 sm:-mt-16 px-4 sm:px-6 pb-8 sm:pb-20">
         <div className="mx-auto max-w-4xl">
           <div className="card-hover rounded-2xl sm:rounded-3xl p-4 sm:p-8">
             <h2 className="font-display text-lg sm:text-xl font-semibold text-slate-800 mb-1 sm:mb-2">
