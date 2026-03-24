@@ -43,11 +43,18 @@ const defaultRules = {
 async function main() {
   for (let i = 0; i < educators.length; i++) {
     const edu = educators[i];
+    const existing = await prisma.educator.findUnique({
+      where: { id: edu.id },
+    });
+    if (existing) {
+      // Ne jamais modifier : préserve les conditions (ancienneté, qualifié, mot de passe)
+      // déjà configurées par l'admin
+      continue;
+    }
     const password = getPassword(i);
     const passwordHash = bcrypt.hashSync(password, 10);
-    await prisma.educator.upsert({
-      where: { id: edu.id },
-      create: {
+    await prisma.educator.create({
+      data: {
         id: edu.id,
         name: edu.name,
         email: edu.email,
@@ -56,15 +63,19 @@ async function main() {
         isQualified: "isQualified" in edu ? edu.isQualified : undefined,
         passwordHash,
       },
-      update: { passwordHash },
     });
   }
 
-  const existing = await prisma.vacationRulesConfig.findFirst();
-  if (!existing) {
+  // Règles : créer UNIQUEMENT si aucune n'existe.
+  // Ne JAMAIS modifier les conditions déjà sauvegardées par l'admin.
+  const existingRules = await prisma.vacationRulesConfig.findFirst();
+  if (!existingRules) {
     await prisma.vacationRulesConfig.create({
       data: { rules: JSON.stringify(defaultRules) },
     });
+    console.log("Règles par défaut créées (première fois)");
+  } else {
+    console.log("Règles existantes conservées (non modifiées)");
   }
 
   console.log("Seed terminé ✓");
