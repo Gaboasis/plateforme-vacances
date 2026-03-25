@@ -8,7 +8,8 @@
     "start": "prisma db push && prisma db seed && next start",
     "lint": "next lint",
     "db:push": "prisma db push",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:clear-requests": "prisma db execute --file scripts/delete-vacation-requests.sql --schema prisma/schema.prisma"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
