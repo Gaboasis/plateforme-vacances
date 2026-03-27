@@ -20,10 +20,20 @@ const educators = [
   { id: "zooka", name: "Zooka", email: "zooka@garderie.fr", role: "entretien" as const },
   { id: "kamar", name: "Kamar", email: "kamar@garderie.fr", role: "secretaire" as const },
   { id: "admin", name: "Admin", email: "admin@garderie.fr", role: "admin" as const },
+  // Compte uniquement pour démonstrations (apparaît en dernier dans la liste)
+  {
+    id: "demo-visite",
+    name: "Démo visite",
+    email: "demo-visite@garderie.fr",
+    role: "educatrice" as const,
+    seniorityRank: 999,
+    isQualified: true,
+  },
 ];
 
-const getPassword = (index: number): string => {
-  if (educators[index].id === "admin") return "gabvac2026";
+const getPassword = (edu: (typeof educators)[number], index: number): string => {
+  if (edu.id === "admin") return "gabvac2026";
+  if (edu.id === "demo-visite") return "demo2026";
   return `garderie${101 + index * 3}`;
 };
 
@@ -51,7 +61,7 @@ async function main() {
       // déjà configurées par l'admin
       continue;
     }
-    const password = getPassword(i);
+    const password = getPassword(edu, i);
     const passwordHash = bcrypt.hashSync(password, 10);
     await prisma.educator.create({
       data: {

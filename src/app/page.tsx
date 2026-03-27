@@ -21,6 +21,7 @@ const FALLBACK_EDUCATORS: { id: string; name: string; role: string }[] = [
   { id: "zooka", name: "Zooka", role: "entretien" },
   { id: "kamar", name: "Kamar", role: "secretaire" },
   { id: "admin", name: "Admin", role: "admin" },
+  { id: "demo-visite", name: "Démo visite", role: "educatrice" },
 ];
 
 export default function HomePage() {
