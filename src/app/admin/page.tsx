@@ -21,6 +21,7 @@ import type {
   Educator,
 } from "@/types";
 import { getAllBiWeekRanges } from "@/lib/biweek";
+import { RequestMetaDates } from "@/components/RequestMetaDates";
 
 const defaultRules: Partial<VacationRules> = {
   minQualifiedPresent: 1,
@@ -340,6 +341,7 @@ export default function AdminPage() {
                         </p>
                       </div>
                     )}
+                    <RequestMetaDates req={req} />
                   </div>
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-2">
                     <StatusBadge status={req.status} />

@@ -134,6 +134,7 @@ export async function addVacationRequest(
   request: Omit<VacationRequest, "id" | "createdAt" | "status">,
   status: VacationRequest["status"] = "accepted"
 ): Promise<VacationRequest> {
+  const now = new Date();
   const req = await prisma.vacationRequest.create({
     data: {
       educatorId: request.educatorId,
@@ -142,6 +143,7 @@ export async function addVacationRequest(
       endDate: new Date(request.endDate),
       reason: request.reason,
       status,
+      reviewedAt: status !== "pending" ? now : null,
     },
   });
   return requestToType(req);
@@ -151,12 +153,25 @@ export async function updateVacationRequest(
   id: string,
   updates: Partial<VacationRequest>
 ) {
+  const existing = await prisma.vacationRequest.findUnique({ where: { id } });
+  if (!existing) {
+    throw new Error("Demande introuvable");
+  }
+
   const data: Record<string, unknown> = {};
   if (updates.status != null) data.status = updates.status;
   if (updates.rejectionReason != null) data.rejectionReason = updates.rejectionReason;
   if (updates.urgentAppealReason != null) data.urgentAppealReason = updates.urgentAppealReason;
   if (updates.appealReviewedAt != null) data.appealReviewedAt = new Date(updates.appealReviewedAt);
-  if (updates.status && updates.status !== "pending") {
+
+  const newStatus = (updates.status ?? existing.status) as VacationRequest["status"];
+  const isAppealResolution =
+    Boolean(existing.urgentAppealReason) &&
+    existing.appealReviewedAt == null &&
+    updates.appealReviewedAt != null;
+
+  // Date de la première acceptation / refus : une seule fois, pas écrasée lors du traitement d'une urgence motivée
+  if (newStatus !== "pending" && !isAppealResolution && !existing.reviewedAt) {
     data.reviewedAt = new Date();
   }
 

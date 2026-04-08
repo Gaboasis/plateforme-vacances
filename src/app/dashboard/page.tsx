@@ -5,6 +5,7 @@ import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 import { CalendarPlus, Clock, CheckCircle, XCircle } from "lucide-react";
 import type { Educator, VacationRequest } from "@/types";
+import { RequestMetaDates } from "@/components/RequestMetaDates";
 
 function UrgentAppealForm({
   requestId,
@@ -372,16 +373,7 @@ export default function DashboardPage() {
                       Motif : {req.rejectionReason}
                     </p>
                   )}
-                  {req.status === "rejected" && req.urgentAppealReason && !req.appealReviewedAt && (
-                    <p className="mt-2 text-sm text-amber-700">
-                      Appel soumis, en attente d&apos;évaluation par l&apos;administration
-                    </p>
-                  )}
-                  {req.status === "rejected" && req.appealReviewedAt && (
-                    <p className="mt-2 text-sm text-slate-500">
-                      Appel refusé par l&apos;administration
-                    </p>
-                  )}
+                  <RequestMetaDates req={req} />
                   {req.status === "rejected" && !req.urgentAppealReason && user && (
                     <div className="mt-2">
                       {expandedAppealFor === req.id ? (
