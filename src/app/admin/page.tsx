@@ -220,6 +220,30 @@ export default function AdminPage() {
       !r.appealReviewedAt
   ).length;
 
+  /** Demandes regroupées par auteur, noms triés (fr), demandes récentes d’abord dans chaque groupe */
+  const requestsByEducator = (() => {
+    const map = new Map<string, VacationRequest[]>();
+    for (const r of requests) {
+      const arr = map.get(r.educatorId);
+      if (arr) arr.push(r);
+      else map.set(r.educatorId, [r]);
+    }
+    return Array.from(map.entries())
+      .map(([educatorId, reqs]) => ({
+        educatorId,
+        educatorName: reqs[0]?.educatorName ?? educatorId,
+        requests: [...reqs].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ),
+      }))
+      .sort((a, b) =>
+        a.educatorName.localeCompare(b.educatorName, "fr", {
+          sensitivity: "base",
+        })
+      );
+  })();
+
   return (
     <div className="space-y-6 sm:space-y-8">
       <div>
@@ -302,73 +326,99 @@ export default function AdminPage() {
               <p className="mt-4 text-slate-600">Aucune demande pour le moment</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {requests.map((req) => (
-                <div
-                  key={req.id}
-                  className="card-hover flex flex-col gap-4 p-4 sm:p-6 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-800">
-                      {req.educatorName}
-                      {(() => {
-                        const edu = educatorsList.find((e) => e.id === req.educatorId);
-                        return edu?.seniorityRank != null ? (
-                          <span className="ml-2 text-xs font-normal text-slate-500">
-                            (ancienneté : rang {edu.seniorityRank})
-                          </span>
-                        ) : null;
-                      })()}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {safeFormatDate(req.startDate)} — {safeFormatDate(req.endDate)}
-                    </p>
-                    {req.reason && (
-                      <p className="mt-1 text-sm text-slate-500">{req.reason}</p>
-                    )}
-                    {req.status === "rejected" && req.rejectionReason && (
-                      <p className="mt-2 text-sm text-rose-600">
-                        {req.rejectionReason}
-                      </p>
-                    )}
-                    {req.status === "rejected" && req.urgentAppealReason && !req.appealReviewedAt && (
-                      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-xs font-medium text-amber-800 mb-1">
-                          Urgence motivée :
-                        </p>
-                        <p className="text-sm text-amber-900">
-                          {req.urgentAppealReason}
-                        </p>
+            <div className="space-y-6">
+              {requestsByEducator.map((group) => {
+                const edu = educatorsList.find((e) => e.id === group.educatorId);
+                return (
+                  <div
+                    key={group.educatorId}
+                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                  >
+                    <div className="border-b border-slate-200 bg-gradient-to-r from-slate-100 to-primary-50/40 px-4 py-3 sm:px-5">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <h3 className="font-display text-base font-semibold text-slate-800">
+                          {group.educatorName}
+                          {edu?.seniorityRank != null && (
+                            <span className="ml-2 text-sm font-normal text-slate-500">
+                              (ancienneté : rang {edu.seniorityRank})
+                            </span>
+                          )}
+                        </h3>
+                        <span className="text-xs font-medium text-slate-500">
+                          {group.requests.length} demande
+                          {group.requests.length > 1 ? "s" : ""}
+                        </span>
                       </div>
-                    )}
-                    <RequestMetaDates req={req} />
-                  </div>
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-2">
-                    <StatusBadge status={req.status} />
-                    {(req.status === "pending" ||
-                      (req.status === "rejected" && req.urgentAppealReason && !req.appealReviewedAt)) && (
-                      <div className="flex gap-2 flex-wrap">
-                        <button
-                          onClick={() =>
-                            handleUpdateRequestStatus(req.id, "accepted")
-                          }
-                          className="rounded-lg bg-emerald-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-200 touch-manipulation min-h-[44px] sm:min-h-0"
+                    </div>
+                    <div className="divide-y divide-slate-100 p-2 sm:p-3 space-y-0">
+                      {group.requests.map((req) => (
+                        <div
+                          key={req.id}
+                          className="card-hover flex flex-col gap-4 p-3 sm:p-5 sm:flex-row sm:items-center sm:justify-between"
                         >
-                          Accepter
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleUpdateRequestStatus(req.id, "rejected", "Appel refusé")
-                          }
-                          className="rounded-lg bg-rose-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-200 touch-manipulation min-h-[44px] sm:min-h-0"
-                        >
-                          Refuser
-                        </button>
-                      </div>
-                    )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800">
+                              {safeFormatDate(req.startDate)} —{" "}
+                              {safeFormatDate(req.endDate)}
+                            </p>
+                            {req.reason && (
+                              <p className="mt-1 text-sm text-slate-500">{req.reason}</p>
+                            )}
+                            {req.status === "rejected" && req.rejectionReason && (
+                              <p className="mt-2 text-sm text-rose-600">
+                                {req.rejectionReason}
+                              </p>
+                            )}
+                            {req.status === "rejected" &&
+                              req.urgentAppealReason &&
+                              !req.appealReviewedAt && (
+                                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                  <p className="text-xs font-medium text-amber-800 mb-1">
+                                    Urgence motivée :
+                                  </p>
+                                  <p className="text-sm text-amber-900">
+                                    {req.urgentAppealReason}
+                                  </p>
+                                </div>
+                              )}
+                            <RequestMetaDates req={req} />
+                          </div>
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-2 shrink-0">
+                            <StatusBadge status={req.status} />
+                            {(req.status === "pending" ||
+                              (req.status === "rejected" &&
+                                req.urgentAppealReason &&
+                                !req.appealReviewedAt)) && (
+                              <div className="flex gap-2 flex-wrap">
+                                <button
+                                  onClick={() =>
+                                    handleUpdateRequestStatus(req.id, "accepted")
+                                  }
+                                  className="rounded-lg bg-emerald-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-200 touch-manipulation min-h-[44px] sm:min-h-0"
+                                >
+                                  Accepter
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    handleUpdateRequestStatus(
+                                      req.id,
+                                      "rejected",
+                                      "Appel refusé"
+                                    )
+                                  }
+                                  className="rounded-lg bg-rose-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-200 touch-manipulation min-h-[44px] sm:min-h-0"
+                                >
+                                  Refuser
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
