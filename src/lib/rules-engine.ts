@@ -1,6 +1,7 @@
 import { addDays, differenceInDays, isWithinInterval, parseISO } from "date-fns";
 import type { Educator, VacationRequest, VacationRules } from "@/types";
 import { getBiWeekFromDate } from "./biweek";
+import { isDemoEducatorId } from "./demo-educator";
 
 export interface ValidationContext {
   rules: VacationRules;
@@ -177,6 +178,11 @@ export function validateVacationRequest(
     };
   }
 
+  /** Congés acceptés du compte démo : exclus des calculs d’effectif / places (mais la démo suit le reste des règles comme tout le monde) */
+  const poolExcludingDemoAccepts = vacationRequests.filter(
+    (r) => !isDemoEducatorId(r.educatorId)
+  );
+
   const periodRules = getPeriodRules(start, end, rules);
 
   // Préavis minimum
@@ -289,19 +295,22 @@ export function validateVacationRequest(
     return { valid: true, requiresManualReview: true };
   }
 
-  // Compter les éducatrices qualifiées / non qualifiées
+  // Compter les éducatrices qualifiées / non qualifiées (hors compte démo)
   const educatorIds = educators
-    .filter((e) => e.role === "educatrice")
+    .filter((e) => e.role === "educatrice" && !isDemoEducatorId(e.id))
     .map((e) => e.id);
   const qualifiedCount = educators.filter(
-    (e) => e.role === "educatrice" && e.isQualified
+    (e) =>
+      e.role === "educatrice" &&
+      e.isQualified &&
+      !isDemoEducatorId(e.id)
   ).length;
   const nonQualifiedCount = educatorIds.length - qualifiedCount;
 
   const requesterQualified = requester?.isQualified ?? false;
 
-  // Vacances acceptées pendant la période demandée
-  const overlappingAccepted = vacationRequests.filter((r) =>
+  // Vacances acceptées sur la période : sans celles du compte démo (fictives pour les autres)
+  const overlappingAccepted = poolExcludingDemoAccepts.filter((r) =>
     overlaps(r, start, end)
   );
 
@@ -310,7 +319,12 @@ export function validateVacationRequest(
     overlappingAccepted
       .filter((r) => {
         const ed = educators.find((e) => e.id === r.educatorId);
-        return ed && ed.role === "educatrice" && ed.isQualified;
+        return (
+          ed &&
+          ed.role === "educatrice" &&
+          ed.isQualified &&
+          !isDemoEducatorId(r.educatorId)
+        );
       })
       .map((r) => r.educatorId)
   ).size;
@@ -318,7 +332,12 @@ export function validateVacationRequest(
     overlappingAccepted
       .filter((r) => {
         const ed = educators.find((e) => e.id === r.educatorId);
-        return ed && ed.role === "educatrice" && !ed.isQualified;
+        return (
+          ed &&
+          ed.role === "educatrice" &&
+          !ed.isQualified &&
+          !isDemoEducatorId(r.educatorId)
+        );
       })
       .map((r) => r.educatorId)
   ).size;

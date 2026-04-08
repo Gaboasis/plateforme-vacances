@@ -1,4 +1,5 @@
 import type { Educator, VacationRequest, VacationRules } from "@/types";
+import { DEMO_EDUCATOR_ID } from "./demo-educator";
 import { prisma } from "./db";
 
 function educatorToType(edu: {
@@ -211,6 +212,7 @@ export async function getPendingAppealsCount(): Promise<number> {
       status: "rejected",
       urgentAppealReason: { not: null },
       appealReviewedAt: null,
+      educatorId: { not: DEMO_EDUCATOR_ID },
     },
   });
   return count;

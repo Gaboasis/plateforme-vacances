@@ -21,6 +21,7 @@ import type {
   Educator,
 } from "@/types";
 import { getAllBiWeekRanges } from "@/lib/biweek";
+import { isDemoEducatorId } from "@/lib/demo-educator";
 import { RequestMetaDates } from "@/components/RequestMetaDates";
 
 const defaultRules: Partial<VacationRules> = {
@@ -212,8 +213,10 @@ export default function AdminPage() {
     );
   }
 
-  const pendingCount = requests.filter((r) => r.status === "pending").length;
-  const appealPendingCount = requests.filter(
+  const requestsExcludingDemo = requests.filter((r) => !isDemoEducatorId(r.educatorId));
+
+  const pendingCount = requestsExcludingDemo.filter((r) => r.status === "pending").length;
+  const appealPendingCount = requestsExcludingDemo.filter(
     (r) =>
       r.status === "rejected" &&
       r.urgentAppealReason &&
