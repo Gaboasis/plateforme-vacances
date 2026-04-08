@@ -79,6 +79,8 @@ const defaultRules: VacationRules = {
   blackoutDates: [],
   maxRequestsPerMonth: 2,
   maxRequestsPerYear: 2,
+  maxAcceptedVacationDaysPerYear: 21,
+  maxAcceptedRequestsPerYear: 3,
   minQualifiedPresent: 1,
   minNonQualifiedPresent: 0,
   seniorityPriorityEnabled: true,

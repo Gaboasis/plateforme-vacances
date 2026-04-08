@@ -656,6 +656,70 @@ export default function AdminPage() {
             </div>
           </div>
 
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <h3 className="mb-2 font-medium text-slate-800">
+              Plafond des congés déjà acceptés (année civile)
+            </h3>
+            <p className="mb-4 text-sm text-slate-500">
+              Au-delà de ces seuils, la demande est{' '}
+              <strong className="text-slate-700">refusée automatiquement</strong> comme les
+              autres refus : la personne peut soumettre une{' '}
+              <strong className="text-slate-700">urgence motivée</strong> pour examen par
+              l&apos;administration.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Jours de congés acceptés max. par an (cumul)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={rules.maxAcceptedVacationDaysPerYear ?? 21}
+                  onChange={(e) =>
+                    setRules({
+                      ...rules,
+                      maxAcceptedVacationDaysPerYear: Math.max(
+                        1,
+                        parseInt(e.target.value) || 1
+                      ),
+                    })
+                  }
+                  className="input-field"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Périodes qui se chevauchent ou se suivent sont comptées sans doublon
+                  de jour.
+                </p>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Demandes acceptées max. par an (sur l&apos;année de début)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={rules.maxAcceptedRequestsPerYear ?? 3}
+                  onChange={(e) =>
+                    setRules({
+                      ...rules,
+                      maxAcceptedRequestsPerYear: Math.max(
+                        1,
+                        parseInt(e.target.value) || 1
+                      ),
+                    })
+                  }
+                  className="input-field"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Chaque demande acceptée compte pour l&apos;année civile de sa date de
+                  début. Si « demandes max. par année » (ci-dessus) est plus bas, cette
+                  limite-là s&apos;applique d&apos;abord.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Ratio qualifiées / non qualifiées */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
             <h3 className="mb-4 font-medium text-slate-800">

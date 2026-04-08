@@ -1,4 +1,4 @@
-import { differenceInDays, isWithinInterval, parseISO } from "date-fns";
+import { addDays, differenceInDays, isWithinInterval, parseISO } from "date-fns";
 import type { Educator, VacationRequest, VacationRules } from "@/types";
 import { getBiWeekFromDate } from "./biweek";
 
@@ -63,6 +63,82 @@ function getPeriodRules(
   }
 
   return { maxConcurrent, minQualified, minNonQualified };
+}
+
+/** Fusion des périodes qui se chevauchent ou se suivent (jour contigu), puis somme des jours */
+function mergedVacationDaysInYear(
+  intervals: { s: Date; e: Date }[]
+): number {
+  if (intervals.length === 0) return 0;
+  const sorted = [...intervals].sort((a, b) => a.s.getTime() - b.s.getTime());
+  let cs = sorted[0].s;
+  let ce = sorted[0].e;
+  let total = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const { s, e } = sorted[i];
+    if (s <= addDays(ce, 1)) {
+      if (e > ce) ce = e;
+    } else {
+      total += differenceInDays(ce, cs) + 1;
+      cs = s;
+      ce = e;
+    }
+  }
+  total += differenceInDays(ce, cs) + 1;
+  return total;
+}
+
+function clipIntervalToCalendarYear(
+  dStart: Date,
+  dEnd: Date,
+  year: number
+): { s: Date; e: Date } | null {
+  const ys = new Date(year, 0, 1);
+  const ye = new Date(year, 11, 31);
+  const s = dStart < ys ? ys : dStart;
+  const e = dEnd > ye ? ye : dEnd;
+  if (s > e) return null;
+  return { s, e };
+}
+
+/** Jours de congés si la nouvelle période était acceptée (année civile de `proposedStart`) */
+function projectedAcceptedVacationDaysInYear(
+  educatorId: string,
+  year: number,
+  vacationRequests: VacationRequest[],
+  proposedStart: Date,
+  proposedEnd: Date
+): number {
+  const clips: { s: Date; e: Date }[] = [];
+  for (const r of vacationRequests) {
+    if (r.educatorId !== educatorId || r.status !== "accepted") continue;
+    try {
+      const rs = parseISO(r.startDate);
+      const re = parseISO(r.endDate);
+      const c = clipIntervalToCalendarYear(rs, re, year);
+      if (c) clips.push(c);
+    } catch {
+      /* skip */
+    }
+  }
+  const prop = clipIntervalToCalendarYear(proposedStart, proposedEnd, year);
+  if (prop) clips.push(prop);
+  return mergedVacationDaysInYear(clips);
+}
+
+function acceptedRequestCountForYear(
+  educatorId: string,
+  year: number,
+  vacationRequests: VacationRequest[]
+): number {
+  return vacationRequests.filter((r) => {
+    if (r.educatorId !== educatorId || r.status !== "accepted") return false;
+    try {
+      return parseISO(r.startDate).getFullYear() === year;
+    } catch {
+      return false;
+    }
+  }).length;
 }
 
 function overlaps(
@@ -169,6 +245,39 @@ export function validateVacationRequest(
       valid: false,
       reason: `Vous avez déjà ${maxPerYear} demande(s) cette année.`,
     };
+  }
+
+  const requestYear = start.getFullYear();
+  const dayCap = rules.maxAcceptedVacationDaysPerYear;
+  if (dayCap != null && dayCap > 0) {
+    const projectedDays = projectedAcceptedVacationDaysInYear(
+      request.educatorId,
+      requestYear,
+      vacationRequests,
+      start,
+      end
+    );
+    if (projectedDays > dayCap) {
+      return {
+        valid: false,
+        reason: `Vous avez atteint le plafond de ${dayCap} jours de congés acceptés sur l'année ${requestYear} (ou la demande le ferait dépasser). Vous pouvez motiver une urgence pour que l'administration l'examine.`,
+      };
+    }
+  }
+
+  const acceptedSlotCap = rules.maxAcceptedRequestsPerYear;
+  if (acceptedSlotCap != null && acceptedSlotCap > 0) {
+    const acceptedSoFar = acceptedRequestCountForYear(
+      request.educatorId,
+      requestYear,
+      vacationRequests
+    );
+    if (acceptedSoFar >= acceptedSlotCap) {
+      return {
+        valid: false,
+        reason: `Vous avez déjà ${acceptedSlotCap} demande(s) acceptée(s) sur l'année ${requestYear}. Vous pouvez motiver une urgence pour que l'administration examine une demande supplémentaire.`,
+      };
+    }
   }
 
   const requester = educators.find((e) => e.id === request.educatorId);
