@@ -37,6 +37,22 @@ export interface BiWeekRuleOverrides {
   minNonQualifiedPresent?: number;
 }
 
+/** Déclaration maladie (simple avis à l’administration, hors règles congés) */
+export interface SickLeaveReport {
+  id: string;
+  educatorId: string;
+  educatorName: string;
+  startDate: string;
+  endDate: string;
+  note?: string;
+  /** Présence d’une pièce jointe (détail via GET /api/sick-leaves/[id]/attachment) */
+  hasAttachment: boolean;
+  attachmentName?: string;
+  /** Déclaration explicite : pas de document médical à joindre */
+  declaredNoAttachment?: boolean;
+  createdAt: string;
+}
+
 export interface VacationRules {
   maxConcurrentVacations: number;
   minAdvanceNoticeDays: number;

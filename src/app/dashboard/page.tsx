@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
-import { CalendarPlus, Clock, CheckCircle, XCircle } from "lucide-react";
-import type { Educator, VacationRequest } from "@/types";
+import { CalendarPlus, Clock, CheckCircle, XCircle, Stethoscope, Paperclip } from "lucide-react";
+import type { Educator, SickLeaveReport, VacationRequest } from "@/types";
 import { RequestMetaDates } from "@/components/RequestMetaDates";
 
 function UrgentAppealForm({
@@ -97,6 +97,20 @@ export default function DashboardPage() {
   } | null>(null);
   const [expandedAppealFor, setExpandedAppealFor] = useState<string | null>(null);
 
+  const [sickReports, setSickReports] = useState<SickLeaveReport[]>([]);
+  const [sickLoading, setSickLoading] = useState(true);
+  const [showSickForm, setShowSickForm] = useState(false);
+  const [sickForm, setSickForm] = useState({
+    startDate: "",
+    endDate: "",
+    note: "",
+    file: null as File | null,
+    noDocument: false,
+  });
+  const [sickSubmitting, setSickSubmitting] = useState(false);
+  const [sickError, setSickError] = useState("");
+  const [sickSuccessMsg, setSickSuccessMsg] = useState("");
+
   useEffect(() => {
     const stored = sessionStorage.getItem("user");
     if (!stored) return;
@@ -107,12 +121,71 @@ export default function DashboardPage() {
       return;
     }
     if (educator.role !== "admin") {
-      fetch(`/api/requests?educatorId=${educator.id}`)
-        .then((r) => r.json())
-        .then(setRequests)
-        .finally(() => setLoading(false));
+      Promise.all([
+        fetch(`/api/requests?educatorId=${educator.id}`).then((r) => r.json()),
+        fetch(`/api/sick-leaves?educatorId=${educator.id}`).then((r) => r.json()),
+      ])
+        .then(([reqs, sick]) => {
+          setRequests(Array.isArray(reqs) ? reqs : []);
+          setSickReports(Array.isArray(sick) ? sick : []);
+        })
+        .finally(() => {
+          setLoading(false);
+          setSickLoading(false);
+        });
     }
   }, []);
+
+  const handleSickSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setSickError("");
+    setSickSuccessMsg("");
+    if (!sickForm.startDate || !sickForm.endDate) {
+      setSickError("Indiquez les dates d’absence.");
+      return;
+    }
+    if (!sickForm.file && !sickForm.noDocument) {
+      setSickError(
+        "Joignez le billet ou le document du médecin, ou activez l’option « Je n’ai pas de document à fournir »."
+      );
+      return;
+    }
+    setSickSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.set("educatorId", user.id);
+      fd.set("educatorName", user.name);
+      fd.set("startDate", sickForm.startDate);
+      fd.set("endDate", sickForm.endDate);
+      fd.set("note", sickForm.note);
+      fd.set("noDocument", sickForm.noDocument ? "true" : "false");
+      if (sickForm.file) fd.set("attachment", sickForm.file);
+      const res = await fetch("/api/sick-leaves", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSickError(data.error || "Envoi impossible");
+        return;
+      }
+      setSickReports((prev) => [data as SickLeaveReport, ...prev]);
+      setSickForm({
+        startDate: "",
+        endDate: "",
+        note: "",
+        file: null,
+        noDocument: false,
+      });
+      setShowSickForm(false);
+      setSickSuccessMsg(
+        "Votre absence maladie a bien été transmise à l’administration."
+      );
+      setTimeout(() => setSickSuccessMsg(""), 8000);
+    } catch {
+      setSickError("Erreur de connexion");
+    } finally {
+      setSickSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,21 +289,204 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Bouton nouvelle demande */}
-      {!showForm ? (
-        <button
-          onClick={() => {
-            setShowForm(true);
-            setSubmitStatus("idle");
-            setErrorMessage("");
-            setLastRejectedContext(null);
-          }}
-          className="btn-primary flex items-center gap-2 w-full sm:w-auto"
-        >
-          <CalendarPlus className="h-5 w-5 shrink-0" />
-          Nouvelle demande
-        </button>
-      ) : (
+      {/* Boutons congés / maladie */}
+      {!showForm && !showSickForm ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <button
+            onClick={() => {
+              setShowForm(true);
+              setShowSickForm(false);
+              setSubmitStatus("idle");
+              setErrorMessage("");
+              setLastRejectedContext(null);
+            }}
+            className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto"
+          >
+            <CalendarPlus className="h-5 w-5 shrink-0" />
+            Nouvelle demande
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowSickForm(true);
+              setShowForm(false);
+              setSickError("");
+              setSickSuccessMsg("");
+              setSickForm({
+                startDate: "",
+                endDate: "",
+                note: "",
+                file: null,
+                noDocument: false,
+              });
+            }}
+            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 min-h-[44px] touch-manipulation"
+          >
+            <Stethoscope className="h-5 w-5 shrink-0" />
+            Maladie
+          </button>
+        </div>
+      ) : null}
+
+      {showSickForm ? (
+        <div className="card rounded-2xl border-2 border-rose-200 bg-rose-50/40 p-4 sm:p-6 w-full max-w-full overflow-hidden">
+          <h2 className="font-display text-base sm:text-lg font-semibold text-rose-900 mb-1">
+            Déclarer une absence pour maladie
+          </h2>
+          <p className="mb-4 text-sm text-rose-800/90">
+            Ceci informe l&apos;administration de votre absence. Ce n&apos;est pas une
+            demande de congés : pas de règle de refus ou d&apos;acceptation.
+          </p>
+          <form onSubmit={handleSickSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Début de l&apos;absence
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={sickForm.startDate}
+                  onChange={(e) =>
+                    setSickForm((f) => ({ ...f, startDate: e.target.value }))
+                  }
+                  className="input-field w-full"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Fin de l&apos;absence
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={sickForm.endDate}
+                  onChange={(e) =>
+                    setSickForm((f) => ({ ...f, endDate: e.target.value }))
+                  }
+                  className="input-field w-full"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Précisions sur la maladie (optionnel)
+              </label>
+              <textarea
+                value={sickForm.note}
+                onChange={(e) =>
+                  setSickForm((f) => ({ ...f, note: e.target.value }))
+                }
+                placeholder="Ex: arrêt conseillé par le médecin, grippe..."
+                className="input-field min-h-[80px] resize-none"
+                rows={3}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Billet ou document du médecin — obligatoire
+              </label>
+              <p className="mb-3 text-xs text-slate-500">
+                Photo ou PDF (max. 4 Mo) : billet médical, certificat, arrêt de
+                travail, ordonnance… Si vous n&apos;avez rien à joindre pour
+                l&apos;instant, utilisez l&apos;interrupteur à droite.
+              </p>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+                <label
+                  className={`flex min-h-[52px] flex-1 cursor-pointer items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 hover:border-rose-300 ${
+                    sickForm.noDocument
+                      ? "pointer-events-none opacity-45"
+                      : ""
+                  }`}
+                >
+                  <Paperclip className="h-4 w-4 shrink-0 text-rose-600" />
+                  <span className="min-w-0 truncate">
+                    {sickForm.file
+                      ? sickForm.file.name
+                      : "Choisir un fichier — billet ou document du médecin"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                    className="hidden"
+                    disabled={sickForm.noDocument}
+                    onChange={(e) =>
+                      setSickForm((f) => ({
+                        ...f,
+                        file: e.target.files?.[0] ?? null,
+                        noDocument: false,
+                      }))
+                    }
+                  />
+                </label>
+                <div className="flex shrink-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 lg:max-w-[280px]">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={sickForm.noDocument}
+                    aria-label={"Je n'ai pas de document à fournir"}
+                    onClick={() =>
+                      setSickForm((f) => {
+                        const next = !f.noDocument;
+                        return {
+                          ...f,
+                          noDocument: next,
+                          file: next ? null : f.file,
+                        };
+                      })
+                    }
+                    className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 ${
+                      sickForm.noDocument ? "bg-rose-600" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none mt-0.5 inline-block h-7 w-7 rounded-full bg-white shadow transition duration-200 ease-out ${
+                        sickForm.noDocument ? "translate-x-6" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                  <span className="text-sm leading-snug text-slate-700">
+                    Je n&apos;ai pas de document à fournir
+                  </span>
+                </div>
+              </div>
+            </div>
+            {sickError && (
+              <p className="text-sm text-rose-600">{sickError}</p>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="submit"
+                disabled={
+                  sickSubmitting || (!sickForm.file && !sickForm.noDocument)
+                }
+                className="rounded-xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sickSubmitting ? "Envoi..." : "Transmettre à l’administration"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSickForm(false);
+                  setSickError("");
+                  setSickForm({
+                    startDate: "",
+                    endDate: "",
+                    note: "",
+                    file: null,
+                    noDocument: false,
+                  });
+                }}
+                className="btn-secondary"
+              >
+                Annuler
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {showForm ? (
         <div className="card rounded-2xl p-4 sm:p-6 w-full max-w-full overflow-hidden">
           <h2 className="font-display text-base sm:text-lg font-semibold text-slate-800 mb-4">
             Nouvelle demande de congés
@@ -295,6 +551,12 @@ export default function DashboardPage() {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {sickSuccessMsg && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          ✓ {sickSuccessMsg}
         </div>
       )}
 
@@ -401,6 +663,66 @@ export default function DashboardPage() {
                 </div>
                 <div className="shrink-0 self-start sm:self-center">
                   <StatusBadge status={req.status} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Absences maladie */}
+      <div>
+        <h2 className="font-display text-base sm:text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+          <span className="inline-flex h-2 w-2 rounded-full bg-rose-500" />
+          Absences maladie déclarées
+        </h2>
+        {sickLoading ? (
+          <div className="card flex justify-center py-8">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-rose-500 border-t-transparent" />
+          </div>
+        ) : sickReports.length === 0 ? (
+          <div className="card py-8 text-center text-sm text-slate-500">
+            Aucune déclaration enregistrée. Utilisez le bouton{" "}
+            <span className="font-medium text-rose-700">Maladie</span> pour
+            prévenir l&apos;administration.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {sickReports.map((s) => (
+              <div
+                key={s.id}
+                className="card-hover border-l-4 border-l-rose-500 p-4 sm:p-5"
+              >
+                <p className="font-medium text-slate-800 text-sm sm:text-base">
+                  {format(parseISO(s.startDate), "d MMM yyyy", { locale: fr })} —{" "}
+                  {format(parseISO(s.endDate), "d MMM yyyy", { locale: fr })}
+                </p>
+                {s.note && (
+                  <p className="mt-2 text-sm text-slate-600">{s.note}</p>
+                )}
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                  <span>
+                    Déclaré le{" "}
+                    {format(parseISO(s.createdAt), "d MMM yyyy à HH:mm", {
+                      locale: fr,
+                    })}
+                  </span>
+                  {s.hasAttachment && (
+                    <a
+                      href={`/api/sick-leaves/${s.id}/attachment`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-rose-600 hover:underline"
+                    >
+                      Voir le billet / document du médecin
+                      {s.attachmentName ? ` (${s.attachmentName})` : ""}
+                    </a>
+                  )}
+                  {s.declaredNoAttachment && !s.hasAttachment && (
+                    <span className="rounded-md bg-amber-100 px-2 py-0.5 font-medium text-amber-900">
+                      Aucun document fourni (indiqué par vous)
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

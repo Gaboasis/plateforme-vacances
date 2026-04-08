@@ -14,11 +14,13 @@ import {
   Plus,
   Trash2,
   Users,
+  Stethoscope,
 } from "lucide-react";
 import type {
   VacationRequest,
   VacationRules,
   Educator,
+  SickLeaveReport,
 } from "@/types";
 import { getAllBiWeekRanges } from "@/lib/biweek";
 import { isDemoEducatorId } from "@/lib/demo-educator";
@@ -33,6 +35,7 @@ const defaultRules: Partial<VacationRules> = {
 
 export default function AdminPage() {
   const [requests, setRequests] = useState<VacationRequest[]>([]);
+  const [sickReports, setSickReports] = useState<SickLeaveReport[]>([]);
   const [rules, setRules] = useState<VacationRules | null>(null);
   const [educatorsList, setEducatorsList] = useState<Educator[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +44,7 @@ export default function AdminPage() {
   const router = useRouter();
   const [saveError, setSaveError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<
-    "requests" | "rules" | "educators"
+    "requests" | "sickness" | "rules" | "educators"
   >("requests");
   const [newBlackoutDate, setNewBlackoutDate] = useState("");
   const [passwordEditFor, setPasswordEditFor] = useState<string | null>(null);
@@ -50,15 +53,18 @@ export default function AdminPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [reqsRes, rulesRes, eduRes] = await Promise.all([
+        const [reqsRes, sickRes, rulesRes, eduRes] = await Promise.all([
           fetch("/api/requests"),
+          fetch("/api/sick-leaves"),
           fetch("/api/rules"),
           fetch("/api/educators"),
         ]);
         const reqs = reqsRes.ok ? await reqsRes.json() : [];
+        const sick = sickRes.ok ? await sickRes.json() : [];
         const r = rulesRes.ok ? await rulesRes.json() : null;
         const edu = eduRes.ok ? await eduRes.json() : [];
         setRequests(Array.isArray(reqs) ? reqs : []);
+        setSickReports(Array.isArray(sick) ? sick : []);
         setRules(
           r
             ? {
@@ -74,6 +80,7 @@ export default function AdminPage() {
         setEducatorsList(Array.isArray(edu) ? edu : []);
       } catch {
         setRequests([]);
+        setSickReports([]);
         setRules(null);
         setEducatorsList([]);
       } finally {
@@ -247,6 +254,29 @@ export default function AdminPage() {
       );
   })();
 
+  const sickReportsByEducator = (() => {
+    const map = new Map<string, SickLeaveReport[]>();
+    for (const s of sickReports) {
+      const arr = map.get(s.educatorId);
+      if (arr) arr.push(s);
+      else map.set(s.educatorId, [s]);
+    }
+    return Array.from(map.entries())
+      .map(([educatorId, items]) => ({
+        educatorId,
+        educatorName: items[0]?.educatorName ?? educatorId,
+        reports: [...items].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ),
+      }))
+      .sort((a, b) =>
+        a.educatorName.localeCompare(b.educatorName, "fr", {
+          sensitivity: "base",
+        })
+      );
+  })();
+
   return (
     <div className="space-y-6 sm:space-y-8">
       <div>
@@ -296,6 +326,17 @@ export default function AdminPage() {
               {pendingCount + appealPendingCount} à traiter
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab("sickness")}
+          className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
+            activeTab === "sickness"
+              ? "border-rose-500 text-rose-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <Stethoscope className="h-4 w-4" />
+          Maladie ({sickReports.length})
         </button>
         <button
           onClick={() => setActiveTab("rules")}
@@ -414,6 +455,96 @@ export default function AdminPage() {
                                   Refuser
                                 </button>
                               </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "sickness" && (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Chaque déclaration est un avis à l&apos;administration (dates,
+            détail optionnel, pièce jointe). Aucune règle de congés ne
+            s&apos;applique ici.
+          </p>
+          {sickReports.length === 0 ? (
+            <div className="card text-center py-16">
+              <Stethoscope className="mx-auto h-14 w-14 text-rose-200" />
+              <p className="mt-4 text-slate-600">Aucune déclaration maladie</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {sickReportsByEducator.map((group) => {
+                const edu = educatorsList.find((e) => e.id === group.educatorId);
+                return (
+                  <div
+                    key={group.educatorId}
+                    className="overflow-hidden rounded-2xl border border-rose-200/80 bg-white shadow-sm"
+                  >
+                    <div className="border-b border-rose-100 bg-gradient-to-r from-rose-50 to-white px-4 py-3 sm:px-5">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <h3 className="font-display text-base font-semibold text-slate-800 flex items-center gap-2">
+                          <Stethoscope className="h-4 w-4 text-rose-600" />
+                          {group.educatorName}
+                          {edu?.seniorityRank != null && (
+                            <span className="text-sm font-normal text-slate-500">
+                              (ancienneté : rang {edu.seniorityRank})
+                            </span>
+                          )}
+                        </h3>
+                        <span className="text-xs font-medium text-rose-700/80">
+                          {group.reports.length} déclaration
+                          {group.reports.length > 1 ? "s" : ""}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-rose-50 p-2 sm:p-3">
+                      {group.reports.map((s) => (
+                        <div
+                          key={s.id}
+                          className="p-3 sm:p-4 text-sm text-slate-700"
+                        >
+                          <p className="font-medium text-slate-800">
+                            {safeFormatDate(s.startDate)} —{" "}
+                            {safeFormatDate(s.endDate)}
+                          </p>
+                          {s.note && (
+                            <p className="mt-2 text-slate-600">{s.note}</p>
+                          )}
+                          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                            <span>
+                              Reçu le{" "}
+                              {format(
+                                parseISO(s.createdAt),
+                                "d MMM yyyy à HH:mm",
+                                { locale: fr }
+                              )}
+                            </span>
+                            {s.hasAttachment && (
+                              <a
+                                href={`/api/sick-leaves/${s.id}/attachment`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-rose-600 hover:underline"
+                              >
+                                Billet / document du médecin
+                                {s.attachmentName
+                                  ? ` : ${s.attachmentName}`
+                                  : ""}
+                              </a>
+                            )}
+                            {s.declaredNoAttachment && !s.hasAttachment && (
+                              <span className="rounded-md bg-amber-100 px-2 py-0.5 font-medium text-amber-900">
+                                Aucun document fourni (indiqué par l&apos;employé)
+                              </span>
                             )}
                           </div>
                         </div>

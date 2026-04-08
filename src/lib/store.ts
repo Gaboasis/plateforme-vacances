@@ -1,4 +1,4 @@
-import type { Educator, VacationRequest, VacationRules } from "@/types";
+import type { Educator, SickLeaveReport, VacationRequest, VacationRules } from "@/types";
 import { DEMO_EDUCATOR_ID } from "./demo-educator";
 import { prisma } from "./db";
 
@@ -216,4 +216,70 @@ export async function getPendingAppealsCount(): Promise<number> {
     },
   });
   return count;
+}
+
+function sickLeaveToPublic(row: {
+  id: string;
+  educatorId: string;
+  educatorName: string;
+  startDate: Date;
+  endDate: Date;
+  note: string | null;
+  attachmentBase64: string | null;
+  attachmentName: string | null;
+  declaredNoAttachment: boolean;
+  createdAt: Date;
+}): SickLeaveReport {
+  return {
+    id: row.id,
+    educatorId: row.educatorId,
+    educatorName: row.educatorName,
+    startDate: row.startDate.toISOString().slice(0, 10),
+    endDate: row.endDate.toISOString().slice(0, 10),
+    note: row.note ?? undefined,
+    hasAttachment: Boolean(row.attachmentBase64),
+    attachmentName: row.attachmentName ?? undefined,
+    declaredNoAttachment: row.declaredNoAttachment,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export async function createSickLeaveReport(data: {
+  educatorId: string;
+  educatorName: string;
+  startDate: string;
+  endDate: string;
+  note?: string | null;
+  attachmentBase64?: string | null;
+  attachmentMime?: string | null;
+  attachmentName?: string | null;
+  declaredNoAttachment: boolean;
+}): Promise<SickLeaveReport> {
+  const row = await prisma.sickLeaveReport.create({
+    data: {
+      educatorId: data.educatorId,
+      educatorName: data.educatorName,
+      startDate: new Date(data.startDate),
+      endDate: new Date(data.endDate),
+      note: data.note?.trim() || null,
+      attachmentBase64: data.attachmentBase64 ?? null,
+      attachmentMime: data.attachmentMime ?? null,
+      attachmentName: data.attachmentName ?? null,
+      declaredNoAttachment: data.declaredNoAttachment,
+    },
+  });
+  return sickLeaveToPublic(row);
+}
+
+export async function getSickLeaveReports(educatorId?: string): Promise<SickLeaveReport[]> {
+  const where = educatorId ? { educatorId } : {};
+  const list = await prisma.sickLeaveReport.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+  });
+  return list.map(sickLeaveToPublic);
+}
+
+export async function getSickLeaveReportByIdRaw(id: string) {
+  return prisma.sickLeaveReport.findUnique({ where: { id } });
 }

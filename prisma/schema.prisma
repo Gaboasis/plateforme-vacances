@@ -40,3 +40,19 @@ model VacationRulesConfig {
   rules     String   // JSON stringifié
   updatedAt DateTime @updatedAt
 }
+
+// Déclaration d'absence maladie (sans workflow congés)
+model SickLeaveReport {
+  id               String   @id @default(cuid())
+  educatorId       String
+  educatorName     String
+  startDate        DateTime
+  endDate          DateTime
+  note             String?
+  attachmentBase64 String?  @db.Text
+  attachmentMime   String?
+  attachmentName   String?
+  // Employé a coché « je n'ai pas de document à fournir » (obligatoire si pas de fichier)
+  declaredNoAttachment Boolean @default(false)
+  createdAt        DateTime @default(now())
+}
