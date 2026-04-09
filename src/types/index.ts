@@ -53,6 +53,20 @@ export interface SickLeaveReport {
   createdAt: string;
 }
 
+/** Entrée du journal d’audit (soumissions traçables côté serveur) */
+export interface ActivityAuditLogEntry {
+  id: string;
+  educatorId: string;
+  educatorName: string;
+  action: string;
+  resourceType: string;
+  resourceId?: string;
+  detail?: string;
+  ip?: string;
+  userAgent?: string;
+  createdAt: string;
+}
+
 export interface VacationRules {
   maxConcurrentVacations: number;
   minAdvanceNoticeDays: number;

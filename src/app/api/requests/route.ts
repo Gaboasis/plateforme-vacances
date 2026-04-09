@@ -6,8 +6,11 @@ import {
   getVacationRequests,
   getVacationRules,
   getEducators,
+  AUDIT_ACTIONS,
+  createAuditLog,
 } from "@/lib/store";
 import { validateVacationRequest } from "@/lib/rules-engine";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
 
 export async function GET(request: NextRequest) {
   try {
@@ -54,6 +57,20 @@ export async function POST(request: NextRequest) {
       await updateVacationRequest(rejectedRequest.id, {
         rejectionReason: validation.reason,
       });
+      await createAuditLog({
+        educatorId,
+        educatorName,
+        action: AUDIT_ACTIONS.VACATION_SUBMITTED,
+        resourceType: "VacationRequest",
+        resourceId: rejectedRequest.id,
+        detail: JSON.stringify({
+          status: "rejected",
+          startDate,
+          endDate,
+        }),
+        ip: getClientIp(request),
+        userAgent: getUserAgent(request),
+      });
       return NextResponse.json({
         request: { ...rejectedRequest, rejectionReason: validation.reason },
         accepted: false,
@@ -66,6 +83,21 @@ export async function POST(request: NextRequest) {
       { educatorId, educatorName, startDate, endDate, reason },
       status
     );
+
+    await createAuditLog({
+      educatorId,
+      educatorName,
+      action: AUDIT_ACTIONS.VACATION_SUBMITTED,
+      resourceType: "VacationRequest",
+      resourceId: newRequest.id,
+      detail: JSON.stringify({
+        status,
+        startDate,
+        endDate,
+      }),
+      ip: getClientIp(request),
+      userAgent: getUserAgent(request),
+    });
 
     return NextResponse.json({
       request: newRequest,

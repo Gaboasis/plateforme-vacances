@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -15,12 +15,14 @@ import {
   Trash2,
   Users,
   Stethoscope,
+  ScrollText,
 } from "lucide-react";
 import type {
   VacationRequest,
   VacationRules,
   Educator,
   SickLeaveReport,
+  ActivityAuditLogEntry,
 } from "@/types";
 import { getAllBiWeekRanges } from "@/lib/biweek";
 import { isDemoEducatorId } from "@/lib/demo-educator";
@@ -44,8 +46,10 @@ export default function AdminPage() {
   const router = useRouter();
   const [saveError, setSaveError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<
-    "requests" | "sickness" | "rules" | "educators"
+    "requests" | "sickness" | "audit" | "rules" | "educators"
   >("requests");
+  const [auditLogs, setAuditLogs] = useState<ActivityAuditLogEntry[]>([]);
+  const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
   const [newBlackoutDate, setNewBlackoutDate] = useState("");
   const [passwordEditFor, setPasswordEditFor] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -53,16 +57,18 @@ export default function AdminPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [reqsRes, sickRes, rulesRes, eduRes] = await Promise.all([
+        const [reqsRes, sickRes, rulesRes, eduRes, auditRes] = await Promise.all([
           fetch("/api/requests"),
           fetch("/api/sick-leaves"),
           fetch("/api/rules"),
           fetch("/api/educators"),
+          fetch("/api/audit-logs"),
         ]);
         const reqs = reqsRes.ok ? await reqsRes.json() : [];
         const sick = sickRes.ok ? await sickRes.json() : [];
         const r = rulesRes.ok ? await rulesRes.json() : null;
         const edu = eduRes.ok ? await eduRes.json() : [];
+        const audit = auditRes.ok ? await auditRes.json() : [];
         setRequests(Array.isArray(reqs) ? reqs : []);
         setSickReports(Array.isArray(sick) ? sick : []);
         setRules(
@@ -78,11 +84,13 @@ export default function AdminPage() {
             : null
         );
         setEducatorsList(Array.isArray(edu) ? edu : []);
+        setAuditLogs(Array.isArray(audit) ? audit : []);
       } catch {
         setRequests([]);
         setSickReports([]);
         setRules(null);
         setEducatorsList([]);
+        setAuditLogs([]);
       } finally {
         setLoading(false);
       }
@@ -190,6 +198,34 @@ export default function AdminPage() {
     } catch {
       return dateStr;
     }
+  };
+
+  const safeFormatDateTime = (dateStr: string) => {
+    if (!dateStr || typeof dateStr !== "string") return "—";
+    try {
+      return format(parseISO(dateStr), "d MMM yyyy HH:mm", { locale: fr });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const auditActionLabel = (action: string) => {
+    switch (action) {
+      case "vacation_request_submitted":
+        return "Soumission congés";
+      case "sick_leave_submitted":
+        return "Déclaration maladie";
+      case "vacation_urgent_appeal_submitted":
+        return "Urgence motivée";
+      default:
+        return action;
+    }
+  };
+
+  const shortenUserAgent = (ua?: string | null, max = 72) => {
+    if (!ua) return "—";
+    const s = ua.trim();
+    return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
   };
 
   const StatusBadge = ({ status }: { status: VacationRequest["status"] }) => {
@@ -337,6 +373,17 @@ export default function AdminPage() {
         >
           <Stethoscope className="h-4 w-4" />
           Maladie ({sickReports.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("audit")}
+          className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
+            activeTab === "audit"
+              ? "border-slate-600 text-slate-800"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <ScrollText className="h-4 w-4" />
+          Traçabilité
         </button>
         <button
           onClick={() => setActiveTab("rules")}
@@ -553,6 +600,122 @@ export default function AdminPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "audit" && (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Journal technique des soumissions (congés, maladie, urgences motivées)
+            avec date, personne, action, adresse IP et navigateur. Renseignement
+            additionnel en attendant une confirmation d&apos;identité plus forte.
+          </p>
+          {auditLogs.length === 0 ? (
+            <div className="card text-center py-16">
+              <ScrollText className="mx-auto h-14 w-14 text-slate-300" />
+              <p className="mt-4 text-slate-600">Aucune entrée pour le moment</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-3 sm:px-4">Date / heure</th>
+                    <th className="px-3 py-3 sm:px-4">Personne</th>
+                    <th className="px-3 py-3 sm:px-4">Action</th>
+                    <th className="hidden md:table-cell px-3 py-3 sm:px-4">
+                      IP
+                    </th>
+                    <th className="hidden lg:table-cell px-3 py-3 sm:px-4 max-w-[200px]">
+                      Navigateur
+                    </th>
+                    <th className="px-3 py-3 sm:px-4 w-24">Détail</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {auditLogs.map((row) => (
+                    <Fragment key={row.id}>
+                      <tr className="align-top hover:bg-slate-50/80">
+                        <td className="px-3 py-3 sm:px-4 text-slate-600 whitespace-nowrap">
+                          {safeFormatDateTime(row.createdAt)}
+                        </td>
+                        <td className="px-3 py-3 sm:px-4">
+                          <span className="font-medium text-slate-800">
+                            {row.educatorName}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-slate-500 md:hidden">
+                            {row.ip || "—"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 sm:px-4">
+                          <span className="text-slate-800">
+                            {auditActionLabel(row.action)}
+                          </span>
+                          {row.resourceId && (
+                            <span className="mt-0.5 block font-mono text-xs text-slate-500 truncate max-w-[140px] sm:max-w-none">
+                              {row.resourceType} · {row.resourceId.slice(0, 12)}…
+                            </span>
+                          )}
+                        </td>
+                        <td className="hidden md:table-cell px-3 py-3 sm:px-4 font-mono text-xs text-slate-600">
+                          {row.ip || "—"}
+                        </td>
+                        <td className="hidden lg:table-cell px-3 py-3 sm:px-4 text-xs text-slate-600 max-w-[220px] break-all">
+                          {shortenUserAgent(row.userAgent, 80)}
+                        </td>
+                        <td className="px-3 py-3 sm:px-4">
+                          {row.detail ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedAuditId((id) =>
+                                  id === row.id ? null : row.id
+                                )
+                              }
+                              className="text-primary-600 hover:underline text-xs font-medium touch-manipulation"
+                            >
+                              {expandedAuditId === row.id
+                                ? "Masquer"
+                                : "Voir"}
+                            </button>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                      {expandedAuditId === row.id && row.detail && (
+                        <tr className="bg-slate-50">
+                          <td
+                            colSpan={6}
+                            className="px-3 py-3 sm:px-4 border-t border-slate-100"
+                          >
+                            <pre className="text-xs text-slate-700 whitespace-pre-wrap break-words font-sans max-h-48 overflow-y-auto">
+                              {(() => {
+                                try {
+                                  return JSON.stringify(
+                                    JSON.parse(row.detail!),
+                                    null,
+                                    2
+                                  );
+                                } catch {
+                                  return row.detail;
+                                }
+                              })()}
+                            </pre>
+                            {row.userAgent && (
+                              <p className="mt-2 text-xs text-slate-500 lg:hidden break-all">
+                                UA : {row.userAgent}
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

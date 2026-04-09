@@ -1,4 +1,10 @@
-import type { Educator, SickLeaveReport, VacationRequest, VacationRules } from "@/types";
+import type {
+  ActivityAuditLogEntry,
+  Educator,
+  SickLeaveReport,
+  VacationRequest,
+  VacationRules,
+} from "@/types";
 import { DEMO_EDUCATOR_ID } from "./demo-educator";
 import { prisma } from "./db";
 
@@ -282,4 +288,53 @@ export async function getSickLeaveReports(educatorId?: string): Promise<SickLeav
 
 export async function getSickLeaveReportByIdRaw(id: string) {
   return prisma.sickLeaveReport.findUnique({ where: { id } });
+}
+
+export const AUDIT_ACTIONS = {
+  VACATION_SUBMITTED: "vacation_request_submitted",
+  SICK_LEAVE_SUBMITTED: "sick_leave_submitted",
+  VACATION_URGENT_APPEAL: "vacation_urgent_appeal_submitted",
+} as const;
+
+export async function createAuditLog(data: {
+  educatorId: string;
+  educatorName: string;
+  action: string;
+  resourceType: string;
+  resourceId?: string | null;
+  detail?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+}) {
+  await prisma.activityAuditLog.create({
+    data: {
+      educatorId: data.educatorId,
+      educatorName: data.educatorName,
+      action: data.action,
+      resourceType: data.resourceType,
+      resourceId: data.resourceId ?? null,
+      detail: data.detail ?? null,
+      ip: data.ip ?? null,
+      userAgent: data.userAgent ?? null,
+    },
+  });
+}
+
+export async function getAuditLogs(limit = 300): Promise<ActivityAuditLogEntry[]> {
+  const list = await prisma.activityAuditLog.findMany({
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(limit, 1), 1000),
+  });
+  return list.map((row) => ({
+    id: row.id,
+    educatorId: row.educatorId,
+    educatorName: row.educatorName,
+    action: row.action,
+    resourceType: row.resourceType,
+    resourceId: row.resourceId ?? undefined,
+    detail: row.detail ?? undefined,
+    ip: row.ip ?? undefined,
+    userAgent: row.userAgent ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+  }));
 }

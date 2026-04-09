@@ -56,3 +56,20 @@ model SickLeaveReport {
   declaredNoAttachment Boolean @default(false)
   createdAt        DateTime @default(now())
 }
+
+// Journal technique : qui a soumis quoi, depuis quelle IP / navigateur (traçabilité interne)
+model ActivityAuditLog {
+  id           String   @id @default(cuid())
+  educatorId   String
+  educatorName String
+  action       String
+  resourceType String
+  resourceId   String?
+  detail       String?  @db.Text
+  ip           String?
+  userAgent    String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([educatorId])
+}

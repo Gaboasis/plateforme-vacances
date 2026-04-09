@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getVacationRequestById, updateVacationRequest } from "@/lib/store";
+import {
+  getVacationRequestById,
+  updateVacationRequest,
+  AUDIT_ACTIONS,
+  createAuditLog,
+} from "@/lib/store";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
 
 export async function PATCH(
   request: NextRequest,
@@ -28,6 +34,18 @@ export async function PATCH(
       }
       const updated = await updateVacationRequest(id, {
         urgentAppealReason: urgentAppealReason.trim() || undefined,
+      });
+      await createAuditLog({
+        educatorId,
+        educatorName: existing.educatorName,
+        action: AUDIT_ACTIONS.VACATION_URGENT_APPEAL,
+        resourceType: "VacationRequest",
+        resourceId: id,
+        detail: JSON.stringify({
+          appealPreview: String(urgentAppealReason).trim().slice(0, 200),
+        }),
+        ip: getClientIp(request),
+        userAgent: getUserAgent(request),
       });
       return NextResponse.json(updated);
     }

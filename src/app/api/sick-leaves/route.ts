@@ -3,7 +3,10 @@ import {
   createSickLeaveReport,
   getEducators,
   getSickLeaveReports,
+  AUDIT_ACTIONS,
+  createAuditLog,
 } from "@/lib/store";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED_MIME = new Set([
@@ -114,6 +117,22 @@ export async function POST(request: NextRequest) {
       attachmentMime,
       attachmentName,
       declaredNoAttachment,
+    });
+
+    await createAuditLog({
+      educatorId,
+      educatorName,
+      action: AUDIT_ACTIONS.SICK_LEAVE_SUBMITTED,
+      resourceType: "SickLeaveReport",
+      resourceId: created.id,
+      detail: JSON.stringify({
+        startDate,
+        endDate,
+        hasAttachment: Boolean(attachmentBase64),
+        declaredNoAttachment,
+      }),
+      ip: getClientIp(request),
+      userAgent: getUserAgent(request),
     });
 
     return NextResponse.json(created);
