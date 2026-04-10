@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getEducators } from "@/lib/store";
+import {
+  getEducators,
+  AUDIT_ACTIONS,
+  createAuditLog,
+} from "@/lib/store";
 import { verifyPassword } from "@/lib/auth";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,6 +34,24 @@ export async function POST(request: NextRequest) {
         { error: "Mot de passe incorrect" },
         { status: 401 }
       );
+    }
+
+    try {
+      await createAuditLog({
+        educatorId: educator.id,
+        educatorName: educator.name,
+        action: AUDIT_ACTIONS.USER_LOGIN_SUCCESS,
+        resourceType: "Auth",
+        resourceId: educator.id,
+        detail: JSON.stringify({
+          role: educator.role,
+          email: educator.email,
+        }),
+        ip: getClientIp(request),
+        userAgent: getUserAgent(request),
+      });
+    } catch (err) {
+      console.error("Login audit log failed:", err);
     }
 
     const { passwordHash: _, ...user } = educator;

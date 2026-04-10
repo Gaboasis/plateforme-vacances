@@ -294,6 +294,7 @@ export const AUDIT_ACTIONS = {
   VACATION_SUBMITTED: "vacation_request_submitted",
   SICK_LEAVE_SUBMITTED: "sick_leave_submitted",
   VACATION_URGENT_APPEAL: "vacation_urgent_appeal_submitted",
+  USER_LOGIN_SUCCESS: "user_login_success",
 } as const;
 
 export async function createAuditLog(data: {
@@ -320,10 +321,19 @@ export async function createAuditLog(data: {
   });
 }
 
-export async function getAuditLogs(limit = 300): Promise<ActivityAuditLogEntry[]> {
+export async function getAuditLogs(
+  limit = 300,
+  options?: { actions?: string[] }
+): Promise<ActivityAuditLogEntry[]> {
+  const take = Math.min(Math.max(limit, 1), 1000);
+  const where =
+    options?.actions && options.actions.length > 0
+      ? { action: { in: options.actions } }
+      : undefined;
   const list = await prisma.activityAuditLog.findMany({
+    where,
     orderBy: { createdAt: "desc" },
-    take: Math.min(Math.max(limit, 1), 1000),
+    take,
   });
   return list.map((row) => ({
     id: row.id,

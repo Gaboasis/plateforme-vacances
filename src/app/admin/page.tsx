@@ -16,6 +16,7 @@ import {
   Users,
   Stethoscope,
   ScrollText,
+  LogIn,
 } from "lucide-react";
 import type {
   VacationRequest,
@@ -46,10 +47,12 @@ export default function AdminPage() {
   const router = useRouter();
   const [saveError, setSaveError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<
-    "requests" | "sickness" | "audit" | "rules" | "educators"
+    "requests" | "sickness" | "audit" | "logins" | "rules" | "educators"
   >("requests");
   const [auditLogs, setAuditLogs] = useState<ActivityAuditLogEntry[]>([]);
+  const [loginLogs, setLoginLogs] = useState<ActivityAuditLogEntry[]>([]);
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
+  const [expandedLoginId, setExpandedLoginId] = useState<string | null>(null);
   const [newBlackoutDate, setNewBlackoutDate] = useState("");
   const [passwordEditFor, setPasswordEditFor] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -57,18 +60,21 @@ export default function AdminPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [reqsRes, sickRes, rulesRes, eduRes, auditRes] = await Promise.all([
+        const [reqsRes, sickRes, rulesRes, eduRes, auditRes, loginRes] =
+          await Promise.all([
           fetch("/api/requests"),
           fetch("/api/sick-leaves"),
           fetch("/api/rules"),
           fetch("/api/educators"),
           fetch("/api/audit-logs"),
+          fetch("/api/audit-logs?loginOnly=1&limit=500"),
         ]);
         const reqs = reqsRes.ok ? await reqsRes.json() : [];
         const sick = sickRes.ok ? await sickRes.json() : [];
         const r = rulesRes.ok ? await rulesRes.json() : null;
         const edu = eduRes.ok ? await eduRes.json() : [];
         const audit = auditRes.ok ? await auditRes.json() : [];
+        const logins = loginRes.ok ? await loginRes.json() : [];
         setRequests(Array.isArray(reqs) ? reqs : []);
         setSickReports(Array.isArray(sick) ? sick : []);
         setRules(
@@ -85,12 +91,14 @@ export default function AdminPage() {
         );
         setEducatorsList(Array.isArray(edu) ? edu : []);
         setAuditLogs(Array.isArray(audit) ? audit : []);
+        setLoginLogs(Array.isArray(logins) ? logins : []);
       } catch {
         setRequests([]);
         setSickReports([]);
         setRules(null);
         setEducatorsList([]);
         setAuditLogs([]);
+        setLoginLogs([]);
       } finally {
         setLoading(false);
       }
@@ -217,10 +225,46 @@ export default function AdminPage() {
         return "Déclaration maladie";
       case "vacation_urgent_appeal_submitted":
         return "Urgence motivée";
+      case "user_login_success":
+        return "Connexion";
       default:
         return action;
     }
   };
+
+  const roleLabelFr = (role: string) => {
+    switch (role) {
+      case "educatrice":
+        return "Éducatrice";
+      case "admin":
+        return "Administration";
+      case "cuisiniere":
+        return "Cuisinière";
+      case "entretien":
+        return "Entretien";
+      case "secretaire":
+        return "Secrétaire";
+      default:
+        return role;
+    }
+  };
+
+  const parseLoginDetail = (detail?: string | null) => {
+    if (!detail) return { role: "", email: "" };
+    try {
+      const o = JSON.parse(detail) as { role?: string; email?: string };
+      return {
+        role: typeof o.role === "string" ? o.role : "",
+        email: typeof o.email === "string" ? o.email : "",
+      };
+    } catch {
+      return { role: "", email: "" };
+    }
+  };
+
+  const traceabilityLogs = auditLogs.filter(
+    (row) => row.action !== "user_login_success"
+  );
 
   const shortenUserAgent = (ua?: string | null, max = 72) => {
     if (!ua) return "—";
@@ -345,8 +389,8 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-2 overflow-x-auto border-b border-slate-200 pb-px -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
+      {/* Tabs — flex-wrap pour que « Connexions » etc. restent visibles sans défilement horizontal */}
+      <div className="flex flex-wrap gap-x-2 gap-y-1 border-b border-slate-200 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-px">
         <button
           onClick={() => setActiveTab("requests")}
           className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
@@ -384,6 +428,17 @@ export default function AdminPage() {
         >
           <ScrollText className="h-4 w-4" />
           Traçabilité
+        </button>
+        <button
+          onClick={() => setActiveTab("logins")}
+          className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
+            activeTab === "logins"
+              ? "border-indigo-500 text-indigo-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <LogIn className="h-4 w-4" />
+          Connexions ({loginLogs.length})
         </button>
         <button
           onClick={() => setActiveTab("rules")}
@@ -612,7 +667,7 @@ export default function AdminPage() {
             avec date, personne, action, adresse IP et navigateur. Renseignement
             additionnel en attendant une confirmation d&apos;identité plus forte.
           </p>
-          {auditLogs.length === 0 ? (
+          {traceabilityLogs.length === 0 ? (
             <div className="card text-center py-16">
               <ScrollText className="mx-auto h-14 w-14 text-slate-300" />
               <p className="mt-4 text-slate-600">Aucune entrée pour le moment</p>
@@ -635,7 +690,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {auditLogs.map((row) => (
+                  {traceabilityLogs.map((row) => (
                     <Fragment key={row.id}>
                       <tr className="align-top hover:bg-slate-50/80">
                         <td className="px-3 py-3 sm:px-4 text-slate-600 whitespace-nowrap">
@@ -714,6 +769,122 @@ export default function AdminPage() {
                       )}
                     </Fragment>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "logins" && (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Historique des connexions réussies (page d&apos;accueil), pour tout
+            le personnel — y compris sans demande de congés ni déclaration de
+            maladie. Adresse IP et navigateur par usage interne.
+          </p>
+          {loginLogs.length === 0 ? (
+            <div className="card text-center py-16">
+              <LogIn className="mx-auto h-14 w-14 text-slate-300" />
+              <p className="mt-4 text-slate-600">Aucune connexion enregistrée</p>
+              <p className="mt-2 text-xs text-slate-500">
+                Les prochaines connexions apparaîtront ici après déploiement.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-3 sm:px-4">Date / heure</th>
+                    <th className="px-3 py-3 sm:px-4">Personne</th>
+                    <th className="px-3 py-3 sm:px-4">Fonction</th>
+                    <th className="hidden sm:table-cell px-3 py-3 sm:px-4 max-w-[180px]">
+                      Courriel
+                    </th>
+                    <th className="hidden md:table-cell px-3 py-3 sm:px-4">
+                      IP
+                    </th>
+                    <th className="hidden lg:table-cell px-3 py-3 sm:px-4 max-w-[200px]">
+                      Navigateur
+                    </th>
+                    <th className="px-3 py-3 sm:px-4 w-24">Plus</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loginLogs.map((row) => {
+                    const { role, email } = parseLoginDetail(row.detail);
+                    return (
+                      <Fragment key={row.id}>
+                        <tr className="align-top hover:bg-slate-50/80">
+                          <td className="px-3 py-3 sm:px-4 text-slate-600 whitespace-nowrap">
+                            {safeFormatDateTime(row.createdAt)}
+                          </td>
+                          <td className="px-3 py-3 sm:px-4">
+                            <span className="font-medium text-slate-800">
+                              {row.educatorName}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-slate-500 md:hidden">
+                              {row.ip || "—"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 sm:px-4 text-slate-700">
+                            {role ? roleLabelFr(role) : "—"}
+                          </td>
+                          <td className="hidden sm:table-cell px-3 py-3 sm:px-4 text-xs text-slate-600 break-all max-w-[200px]">
+                            {email || "—"}
+                          </td>
+                          <td className="hidden md:table-cell px-3 py-3 sm:px-4 font-mono text-xs text-slate-600">
+                            {row.ip || "—"}
+                          </td>
+                          <td className="hidden lg:table-cell px-3 py-3 sm:px-4 text-xs text-slate-600 max-w-[220px] break-all">
+                            {shortenUserAgent(row.userAgent, 80)}
+                          </td>
+                          <td className="px-3 py-3 sm:px-4">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedLoginId((id) =>
+                                  id === row.id ? null : row.id
+                                )
+                              }
+                              className="text-primary-600 hover:underline text-xs font-medium touch-manipulation"
+                            >
+                              {expandedLoginId === row.id ? "Masquer" : "Détail"}
+                            </button>
+                          </td>
+                        </tr>
+                        {expandedLoginId === row.id && (
+                          <tr className="bg-slate-50">
+                            <td
+                              colSpan={7}
+                              className="px-3 py-3 sm:px-4 border-t border-slate-100 text-xs text-slate-700 space-y-2"
+                            >
+                              {email && (
+                                <p>
+                                  <span className="font-medium text-slate-500">
+                                    Courriel :{" "}
+                                  </span>
+                                  {email}
+                                </p>
+                              )}
+                              {row.userAgent && (
+                                <p className="break-all">
+                                  <span className="font-medium text-slate-500">
+                                    Navigateur complet :{" "}
+                                  </span>
+                                  {row.userAgent}
+                                </p>
+                              )}
+                              <p className="font-mono text-slate-600">
+                                ID profil : {row.educatorId}
+                              </p>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
