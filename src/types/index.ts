@@ -53,6 +53,28 @@ export interface SickLeaveReport {
   createdAt: string;
 }
 
+/** Demande d’échange de journée de congé hebdomadaire (éducatrices) */
+export interface DayOffSwapRequest {
+  id: string;
+  requesterId: string;
+  requesterName: string;
+  /** true = demande d’une qualifiée (réservée aux qualifiées) ; false = non qualifiée (tout le monde peut voir / accepter selon le mode) */
+  requesterIsQualified: boolean;
+  /** 1 = lundi … 7 = dimanche (ISO) */
+  requesterOffDay: number;
+  mode: "open" | "targeted";
+  targetEducatorId?: string;
+  targetEducatorName?: string;
+  status: "pending" | "confirmed" | "cancelled";
+  acceptedById?: string;
+  acceptedByName?: string;
+  counterpartyOffDay?: number;
+  acceptedAt?: string;
+  message?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Entrée du journal d’audit (soumissions traçables côté serveur) */
 export interface ActivityAuditLogEntry {
   id: string;

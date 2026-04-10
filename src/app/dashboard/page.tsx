@@ -3,8 +3,22 @@
 import { useEffect, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
-import { CalendarPlus, Clock, CheckCircle, XCircle, Stethoscope, Paperclip } from "lucide-react";
-import type { Educator, SickLeaveReport, VacationRequest } from "@/types";
+import {
+  CalendarPlus,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Stethoscope,
+  Paperclip,
+  ArrowLeftRight,
+} from "lucide-react";
+import type {
+  Educator,
+  SickLeaveReport,
+  VacationRequest,
+  DayOffSwapRequest,
+} from "@/types";
+import { ISO_WEEKDAY_OPTIONS, isoWeekdayLabel } from "@/lib/weekday-fr";
 import { RequestMetaDates } from "@/components/RequestMetaDates";
 
 function UrgentAppealForm({
@@ -111,6 +125,45 @@ export default function DashboardPage() {
   const [sickError, setSickError] = useState("");
   const [sickSuccessMsg, setSickSuccessMsg] = useState("");
 
+  const [swapBundle, setSwapBundle] = useState<{
+    inbox: DayOffSwapRequest[];
+    outgoing: DayOffSwapRequest[];
+    history: DayOffSwapRequest[];
+  } | null>(null);
+  const [showSwapForm, setShowSwapForm] = useState(false);
+  const [swapForm, setSwapForm] = useState({
+    mode: "open" as "open" | "targeted",
+    requesterOffDay: 1,
+    targetEducatorId: "",
+    message: "",
+  });
+  const [swapSubmitting, setSwapSubmitting] = useState(false);
+  const [swapError, setSwapError] = useState("");
+  const [swapSuccess, setSwapSuccess] = useState("");
+  const [swapAcceptDays, setSwapAcceptDays] = useState<Record<string, number>>(
+    {}
+  );
+  const [educatorsForSwap, setEducatorsForSwap] = useState<Educator[]>([]);
+
+  const loadSwaps = (educatorId: string, role: string) => {
+    if (role !== "educatrice") {
+      setSwapBundle(null);
+      return;
+    }
+    fetch(`/api/day-off-swaps?educatorId=${educatorId}`)
+             .then((r) => r.json())
+      .then((data) => {
+        if (data?.inbox && data?.outgoing && data?.history) {
+          setSwapBundle(data);
+        } else {
+          setSwapBundle({ inbox: [], outgoing: [], history: [] });
+        }
+      })
+      .catch(() =>
+        setSwapBundle({ inbox: [], outgoing: [], history: [] })
+      );
+  };
+
   useEffect(() => {
     const stored = sessionStorage.getItem("user");
     if (!stored) return;
@@ -121,6 +174,13 @@ export default function DashboardPage() {
       return;
     }
     if (educator.role !== "admin") {
+      fetch("/api/educators")
+        .then((r) => r.json())
+        .then((data) => {
+          if (Array.isArray(data)) setEducatorsForSwap(data);
+        })
+        .catch(() => setEducatorsForSwap([]));
+
       Promise.all([
         fetch(`/api/requests?educatorId=${educator.id}`).then((r) => r.json()),
         fetch(`/api/sick-leaves?educatorId=${educator.id}`).then((r) => r.json()),
@@ -133,8 +193,17 @@ export default function DashboardPage() {
           setLoading(false);
           setSickLoading(false);
         });
+      loadSwaps(educator.id, educator.role);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user || user.role !== "educatrice") return;
+    const intervalId = window.setInterval(() => {
+      loadSwaps(user.id, user.role);
+    }, 40000);
+    return () => window.clearInterval(intervalId);
+  }, [user]);
 
   const handleSickSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,6 +347,119 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
+  const requesterIsQualified = user.isQualified === true;
+  const colleagueChoices = educatorsForSwap.filter((e) => {
+    if (e.role !== "educatrice" || e.id === user.id) return false;
+    if (requesterIsQualified) return e.isQualified === true;
+    return true;
+  });
+
+  const handleSwapSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || user.role !== "educatrice") return;
+    setSwapError("");
+    setSwapSuccess("");
+    if (swapForm.mode === "targeted" && !swapForm.targetEducatorId) {
+      setSwapError("Choisissez la collègue concernée.");
+      return;
+    }
+    setSwapSubmitting(true);
+    try {
+      const res = await fetch("/api/day-off-swaps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          educatorId: user.id,
+          educatorName: user.name,
+          requesterOffDay: swapForm.requesterOffDay,
+          mode: swapForm.mode,
+          targetEducatorId:
+            swapForm.mode === "targeted" ? swapForm.targetEducatorId : undefined,
+          message: swapForm.message.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSwapError(data.error || "Envoi impossible");
+        return;
+      }
+      setSwapSuccess(
+        swapForm.mode === "open"
+          ? requesterIsQualified
+            ? "Votre demande a été envoyée aux seules éducatrices qualifiées. La première qui accepte confirmera l’échange."
+            : "Votre demande a été envoyée à toutes les collègues éducatrices. La première qui accepte confirmera l’échange."
+          : "Votre collègue a été notifiée. Dès qu’elle acceptera, l’échange sera confirmé."
+      );
+      setShowSwapForm(false);
+      setSwapForm({
+        mode: "open",
+        requesterOffDay: 1,
+        targetEducatorId: "",
+        message: "",
+      });
+      loadSwaps(user.id, user.role);
+      setTimeout(() => setSwapSuccess(""), 10000);
+    } catch {
+      setSwapError("Erreur de connexion");
+    } finally {
+      setSwapSubmitting(false);
+    }
+  };
+
+  const handleAcceptSwap = async (swap: DayOffSwapRequest) => {
+    if (!user || user.role !== "educatrice") return;
+    setSwapError("");
+    const day = swapAcceptDays[swap.id] ?? 1;
+    try {
+      const res = await fetch(`/api/day-off-swaps/${swap.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "accept",
+          educatorId: user.id,
+          educatorName: user.name,
+          counterpartyOffDay: day,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSwapError(data.error || "Acceptation impossible");
+        loadSwaps(user.id, user.role);
+        return;
+      }
+      setSwapSuccess(
+        `Échange confirmé avec ${swap.requesterName}. L’administration et votre collègue sont informées.`
+      );
+      loadSwaps(user.id, user.role);
+      setTimeout(() => setSwapSuccess(""), 10000);
+    } catch {
+      setSwapError("Erreur de connexion");
+    }
+  };
+
+  const handleCancelSwap = async (swapId: string) => {
+    if (!user || user.role !== "educatrice") return;
+    try {
+      const res = await fetch(`/api/day-off-swaps/${swapId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "cancel",
+          educatorId: user.id,
+          educatorName: user.name,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSwapError(data.error || "Annulation impossible");
+        return;
+      }
+      loadSwaps(user.id, user.role);
+    } catch {
+      setSwapError("Erreur de connexion");
+    }
+  };
+
   return (
     <div className="space-y-6 sm:space-y-8">
       <div>
@@ -289,13 +471,84 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Boutons congés / maladie */}
-      {!showForm && !showSickForm ? (
+      {user.role === "educatrice" && swapBundle && swapBundle.inbox.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800">
+            Demandes d’échange de journée à traiter
+          </h2>
+          {swapBundle.inbox.map((s) => (
+            <div
+              key={s.id}
+              className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 shadow-sm"
+            >
+              <p className="font-medium text-amber-950">
+                <span className="text-amber-900">{s.requesterName}</span>{" "}
+                souhaite échanger sa journée de congé (
+                <strong>{isoWeekdayLabel(s.requesterOffDay)}</strong>
+                {s.mode === "open"
+                  ? s.requesterIsQualified
+                    ? ") : la première éducatrice qualifiée qui accepte confirme l’échange."
+                    : ") : la première collègue éducatrice qui accepte confirme l’échange."
+                  : ") avec vous (demande directe)."}
+              </p>
+              {s.message ? (
+                <p className="mt-2 text-sm text-amber-900/90">{s.message}</p>
+              ) : null}
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-amber-900">
+                    Votre journée de congé actuelle (une fois l’échange fait,
+                    ce sera celle de {s.requesterName} )
+                  </label>
+                  <select
+                    className="input-field w-full sm:w-auto min-w-[200px]"
+                    value={swapAcceptDays[s.id] ?? 1}
+                    onChange={(e) =>
+                      setSwapAcceptDays((prev) => ({
+                        ...prev,
+                        [s.id]: parseInt(e.target.value, 10),
+                      }))
+                    }
+                  >
+                    {ISO_WEEKDAY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAcceptSwap(s)}
+                  className="rounded-xl bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 touch-manipulation min-h-[44px]"
+                >
+                  Accepter l’échange
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {user.role === "educatrice" && swapError && (
+        <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">
+          {swapError}
+        </p>
+      )}
+      {user.role === "educatrice" && swapSuccess && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          ✓ {swapSuccess}
+        </div>
+      )}
+
+      {/* Boutons congés / maladie / échange journée */}
+      {!showForm && !showSickForm && !showSwapForm ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <button
             onClick={() => {
               setShowForm(true);
               setShowSickForm(false);
+              setShowSwapForm(false);
               setSubmitStatus("idle");
               setErrorMessage("");
               setLastRejectedContext(null);
@@ -310,6 +563,7 @@ export default function DashboardPage() {
             onClick={() => {
               setShowSickForm(true);
               setShowForm(false);
+              setShowSwapForm(false);
               setSickError("");
               setSickSuccessMsg("");
               setSickForm({
@@ -325,6 +579,183 @@ export default function DashboardPage() {
             <Stethoscope className="h-5 w-5 shrink-0" />
             Maladie
           </button>
+          {user.role === "educatrice" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setShowSwapForm(true);
+                setShowForm(false);
+                setShowSickForm(false);
+                setSwapError("");
+                setSwapSuccess("");
+                setSwapForm({
+                  mode: "open",
+                  requesterOffDay: 1,
+                  targetEducatorId: "",
+                  message: "",
+                });
+              }}
+              className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 min-h-[44px] touch-manipulation"
+            >
+              <ArrowLeftRight className="h-5 w-5 shrink-0" />
+              Échange journée de congé
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showSwapForm && user.role === "educatrice" ? (
+        <div className="card rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 p-4 sm:p-6 w-full max-w-full overflow-hidden">
+          <h2 className="font-display text-base sm:text-lg font-semibold text-indigo-950 mb-1">
+            Demande d’échange de journée de congé
+          </h2>
+          <p className="mb-4 text-sm text-indigo-900/85">
+            {requesterIsQualified ? (
+              <>
+                En tant qu’éducatrice <strong>qualifiée</strong>, vos demandes
+                (ouverte ou directe) ne concernent que les collègues{" "}
+                <strong>également qualifiées</strong>. Une demande ouverte n’est
+                visible que par elles.
+              </>
+            ) : (
+              <>
+                En tant qu’éducatrice <strong>non qualifiée</strong>, vous pouvez
+                demander un échange à <strong>toute</strong> collègue éducatrice
+                (qualifiée ou non). Une demande ouverte est visible par toutes.
+              </>
+            )}{" "}
+            L’administration est prévenue lorsque l’échange est confirmé.
+          </p>
+          <form onSubmit={handleSwapSubmit} className="space-y-4">
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-slate-800 mb-2">
+                Type de demande
+              </legend>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3">
+                <input
+                  type="radio"
+                  name="swapMode"
+                  className="mt-1"
+                  checked={swapForm.mode === "open"}
+                  onChange={() =>
+                    setSwapForm((f) => ({
+                      ...f,
+                      mode: "open",
+                      targetEducatorId: "",
+                    }))
+                  }
+                />
+                <span className="text-sm text-slate-700">
+                  <strong>Toutes les collègues</strong> —{" "}
+                  {requesterIsQualified
+                    ? "votre demande n’est visible que par les éducatrices qualifiées ; la première qui accepte confirme l’échange."
+                    : "votre demande est visible par toutes les éducatrices ; la première qui accepte confirme l’échange."}
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3">
+                <input
+                  type="radio"
+                  name="swapMode"
+                  className="mt-1"
+                  checked={swapForm.mode === "targeted"}
+                  onChange={() =>
+                    setSwapForm((f) => ({ ...f, mode: "targeted" }))
+                  }
+                />
+                <span className="text-sm text-slate-700">
+                  <strong>Une collègue précise</strong> — à utiliser si vous
+                  avez déjà convenu verbalement de l’échange avec elle.
+                </span>
+              </label>
+            </fieldset>
+
+            {swapForm.mode === "targeted" ? (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Collègue
+                </label>
+                <select
+                  required
+                  className="input-field w-full"
+                  value={swapForm.targetEducatorId}
+                  onChange={(e) =>
+                    setSwapForm((f) => ({
+                      ...f,
+                      targetEducatorId: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="">— Choisir —</option>
+                  {colleagueChoices.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Votre journée de congé actuelle (semaine)
+              </label>
+              <select
+                className="input-field w-full sm:max-w-xs"
+                value={swapForm.requesterOffDay}
+                onChange={(e) =>
+                  setSwapForm((f) => ({
+                    ...f,
+                    requesterOffDay: parseInt(e.target.value, 10),
+                  }))
+                }
+              >
+                {ISO_WEEKDAY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Message (optionnel)
+              </label>
+              <textarea
+                value={swapForm.message}
+                onChange={(e) =>
+                  setSwapForm((f) => ({ ...f, message: e.target.value }))
+                }
+                placeholder="Ex. Besoin de décaler pour un rendez-vous médical…"
+                className="input-field min-h-[72px] resize-none"
+                rows={3}
+              />
+            </div>
+
+            {swapError ? (
+              <p className="text-sm text-rose-600">{swapError}</p>
+            ) : null}
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="submit"
+                disabled={swapSubmitting}
+                className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {swapSubmitting ? "Envoi…" : "Envoyer la demande"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSwapForm(false);
+                  setSwapError("");
+                }}
+                className="btn-secondary"
+              >
+                Annuler
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
 
@@ -557,6 +988,86 @@ export default function DashboardPage() {
       {sickSuccessMsg && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           ✓ {sickSuccessMsg}
+        </div>
+      )}
+
+      {user.role === "educatrice" && swapBundle && (swapBundle.outgoing.length > 0 ||
+        swapBundle.history.length > 0) && (
+        <div className="space-y-4">
+          <h2 className="font-display text-base sm:text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <ArrowLeftRight className="h-5 w-5 text-indigo-600" />
+            Mes échanges de journée
+          </h2>
+          {swapBundle.outgoing.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-600">
+                En attente de réponse
+              </p>
+              {swapBundle.outgoing.map((s) => (
+                <div
+                  key={s.id}
+                  className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm"
+                >
+                  <p className="text-sm text-slate-800">
+                    Vous proposez d’échanger votre{" "}
+                    <strong>{isoWeekdayLabel(s.requesterOffDay)}</strong>
+                    {s.mode === "open"
+                      ? " (demande ouverte à toutes les collègues)."
+                      : ` avec ${s.targetEducatorName ?? "une collègue"}.`}
+                  </p>
+                  {s.message ? (
+                    <p className="mt-2 text-sm text-slate-600">{s.message}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleCancelSwap(s.id)}
+                    className="mt-3 text-sm font-medium text-rose-600 hover:underline"
+                  >
+                    Annuler la demande
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {swapBundle.history.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-600">
+                Échanges confirmés (à jour avec l’administration)
+              </p>
+              <div className="space-y-2">
+                {swapBundle.history.map((s) => {
+                  const vousEtes =
+                    s.requesterId === user.id ? "demandeur" : "collègue";
+                  return (
+                    <div
+                      key={s.id}
+                      className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-slate-800"
+                    >
+                      <p className="font-medium text-emerald-900">
+                        ✓ {s.requesterName} ({isoWeekdayLabel(s.requesterOffDay)}
+                        ) ↔ {s.acceptedByName} (
+                        {s.counterpartyOffDay != null
+                          ? isoWeekdayLabel(s.counterpartyOffDay)
+                          : "—"}
+                        )
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Vous étiez{" "}
+                        {vousEtes === "demandeur"
+                          ? "à l’origine de la demande."
+                          : "celle qui a accepté l’échange."}{" "}
+                        {s.acceptedAt
+                          ? format(parseISO(s.acceptedAt), "d MMM yyyy à HH:mm", {
+                              locale: fr,
+                            })
+                          : ""}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 

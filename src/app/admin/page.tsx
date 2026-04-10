@@ -17,6 +17,7 @@ import {
   Stethoscope,
   ScrollText,
   LogIn,
+  ArrowLeftRight,
 } from "lucide-react";
 import type {
   VacationRequest,
@@ -24,7 +25,9 @@ import type {
   Educator,
   SickLeaveReport,
   ActivityAuditLogEntry,
+  DayOffSwapRequest,
 } from "@/types";
+import { isoWeekdayLabel } from "@/lib/weekday-fr";
 import { getAllBiWeekRanges } from "@/lib/biweek";
 import { isDemoEducatorId } from "@/lib/demo-educator";
 import { RequestMetaDates } from "@/components/RequestMetaDates";
@@ -47,10 +50,17 @@ export default function AdminPage() {
   const router = useRouter();
   const [saveError, setSaveError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<
-    "requests" | "sickness" | "audit" | "logins" | "rules" | "educators"
+    | "requests"
+    | "sickness"
+    | "dayoff"
+    | "audit"
+    | "logins"
+    | "rules"
+    | "educators"
   >("requests");
   const [auditLogs, setAuditLogs] = useState<ActivityAuditLogEntry[]>([]);
   const [loginLogs, setLoginLogs] = useState<ActivityAuditLogEntry[]>([]);
+  const [dayOffSwaps, setDayOffSwaps] = useState<DayOffSwapRequest[]>([]);
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
   const [expandedLoginId, setExpandedLoginId] = useState<string | null>(null);
   const [newBlackoutDate, setNewBlackoutDate] = useState("");
@@ -60,7 +70,7 @@ export default function AdminPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [reqsRes, sickRes, rulesRes, eduRes, auditRes, loginRes] =
+        const [reqsRes, sickRes, rulesRes, eduRes, auditRes, loginRes, swapRes] =
           await Promise.all([
           fetch("/api/requests"),
           fetch("/api/sick-leaves"),
@@ -68,6 +78,7 @@ export default function AdminPage() {
           fetch("/api/educators"),
           fetch("/api/audit-logs"),
           fetch("/api/audit-logs?loginOnly=1&limit=500"),
+          fetch("/api/day-off-swaps?all=1"),
         ]);
         const reqs = reqsRes.ok ? await reqsRes.json() : [];
         const sick = sickRes.ok ? await sickRes.json() : [];
@@ -75,6 +86,7 @@ export default function AdminPage() {
         const edu = eduRes.ok ? await eduRes.json() : [];
         const audit = auditRes.ok ? await auditRes.json() : [];
         const logins = loginRes.ok ? await loginRes.json() : [];
+        const swaps = swapRes.ok ? await swapRes.json() : [];
         setRequests(Array.isArray(reqs) ? reqs : []);
         setSickReports(Array.isArray(sick) ? sick : []);
         setRules(
@@ -92,6 +104,7 @@ export default function AdminPage() {
         setEducatorsList(Array.isArray(edu) ? edu : []);
         setAuditLogs(Array.isArray(audit) ? audit : []);
         setLoginLogs(Array.isArray(logins) ? logins : []);
+        setDayOffSwaps(Array.isArray(swaps) ? swaps : []);
       } catch {
         setRequests([]);
         setSickReports([]);
@@ -99,6 +112,7 @@ export default function AdminPage() {
         setEducatorsList([]);
         setAuditLogs([]);
         setLoginLogs([]);
+        setDayOffSwaps([]);
       } finally {
         setLoading(false);
       }
@@ -227,6 +241,8 @@ export default function AdminPage() {
         return "Urgence motivée";
       case "user_login_success":
         return "Connexion";
+      case "day_off_swap_confirmed":
+        return "Échange journée confirmé";
       default:
         return action;
     }
@@ -417,6 +433,17 @@ export default function AdminPage() {
         >
           <Stethoscope className="h-4 w-4" />
           Maladie ({sickReports.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("dayoff")}
+          className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
+            activeTab === "dayoff"
+              ? "border-indigo-500 text-indigo-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <ArrowLeftRight className="h-4 w-4" />
+          Échanges jour ({dayOffSwaps.length})
         </button>
         <button
           onClick={() => setActiveTab("audit")}
@@ -655,6 +682,98 @@ export default function AdminPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "dayoff" && (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Demandes d&apos;échange de journée de congé entre éducatrices. Les
+            lignes confirmées correspondent à un accord enregistré sur la
+            plateforme (à reporter dans la planification réelle si besoin).
+          </p>
+          {dayOffSwaps.length === 0 ? (
+            <div className="card text-center py-16">
+              <ArrowLeftRight className="mx-auto h-14 w-14 text-slate-300" />
+              <p className="mt-4 text-slate-600">Aucune demande enregistrée</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-3 sm:px-4">Date</th>
+                    <th className="px-3 py-3 sm:px-4">Demandeur</th>
+                    <th className="px-3 py-3 sm:px-4">Catégorie</th>
+                    <th className="px-3 py-3 sm:px-4">Mode</th>
+                    <th className="px-3 py-3 sm:px-4">Statut</th>
+                    <th className="px-3 py-3 sm:px-4">Échange</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dayOffSwaps.map((s) => (
+                    <tr key={s.id} className="align-top hover:bg-slate-50/80">
+                      <td className="px-3 py-3 sm:px-4 text-slate-600 whitespace-nowrap">
+                        {safeFormatDateTime(s.createdAt)}
+                      </td>
+                      <td className="px-3 py-3 sm:px-4">
+                        <span className="font-medium text-slate-800">
+                          {s.requesterName}
+                        </span>
+                        <span className="block text-xs text-slate-500">
+                          Son jour : {isoWeekdayLabel(s.requesterOffDay)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 sm:px-4 text-slate-700">
+                        {s.requesterIsQualified ? "Qualifiée" : "Non qualifiée"}
+                      </td>
+                      <td className="px-3 py-3 sm:px-4 text-slate-700">
+                        {s.mode === "open"
+                          ? "Toutes les collègues"
+                          : `Vers ${s.targetEducatorName ?? "—"}`}
+                      </td>
+                      <td className="px-3 py-3 sm:px-4">
+                        {s.status === "pending" && (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                            En attente
+                          </span>
+                        )}
+                        {s.status === "confirmed" && (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-900">
+                            Confirmé
+                          </span>
+                        )}
+                        {s.status === "cancelled" && (
+                          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700">
+                            Annulé
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 sm:px-4 text-slate-700">
+                        {s.status === "confirmed" && s.acceptedByName ? (
+                          <span>
+                            {s.requesterName} ({isoWeekdayLabel(s.requesterOffDay)}
+                            ) ↔ {s.acceptedByName} (
+                            {s.counterpartyOffDay != null
+                              ? isoWeekdayLabel(s.counterpartyOffDay)
+                              : "—"}
+                            )
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                        {s.message ? (
+                          <span className="mt-1 block text-xs text-slate-500">
+                            {s.message}
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

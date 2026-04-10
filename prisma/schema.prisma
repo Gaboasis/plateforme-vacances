@@ -57,6 +57,33 @@ model SickLeaveReport {
   createdAt        DateTime @default(now())
 }
 
+// Demande d’échange de journée de congé hebdomadaire entre éducatrices
+model DayOffSwapRequest {
+  id                  String    @id @default(cuid())
+  requesterId         String
+  requesterName       String
+  requesterIsQualified Boolean  @default(false)
+  requesterOffDay     Int       // 1 = lundi … 7 = dimanche (ISO, getISODay)
+  mode                String    // "open" | "targeted"
+  targetEducatorId    String?
+  targetEducatorName  String?
+
+  status              String    // "pending" | "confirmed" | "cancelled"
+  acceptedById        String?
+  acceptedByName      String?
+  counterpartyOffDay  Int?      // jour de congé de la collègue qui accepte
+  acceptedAt          DateTime?
+
+  message             String?   @db.Text
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([status])
+  @@index([requesterId])
+  @@index([targetEducatorId])
+}
+
 // Journal technique : qui a soumis quoi, depuis quelle IP / navigateur (traçabilité interne)
 model ActivityAuditLog {
   id           String   @id @default(cuid())

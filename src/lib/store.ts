@@ -1,5 +1,6 @@
 import type {
   ActivityAuditLogEntry,
+  DayOffSwapRequest,
   Educator,
   SickLeaveReport,
   VacationRequest,
@@ -295,7 +296,220 @@ export const AUDIT_ACTIONS = {
   SICK_LEAVE_SUBMITTED: "sick_leave_submitted",
   VACATION_URGENT_APPEAL: "vacation_urgent_appeal_submitted",
   USER_LOGIN_SUCCESS: "user_login_success",
+  DAY_OFF_SWAP_CONFIRMED: "day_off_swap_confirmed",
 } as const;
+
+function dayOffSwapToType(row: {
+  id: string;
+  requesterId: string;
+  requesterName: string;
+  requesterIsQualified: boolean;
+  requesterOffDay: number;
+  mode: string;
+  targetEducatorId: string | null;
+  targetEducatorName: string | null;
+  status: string;
+  acceptedById: string | null;
+  acceptedByName: string | null;
+  counterpartyOffDay: number | null;
+  acceptedAt: Date | null;
+  message: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): DayOffSwapRequest {
+  return {
+    id: row.id,
+    requesterId: row.requesterId,
+    requesterName: row.requesterName,
+    requesterIsQualified: row.requesterIsQualified,
+    requesterOffDay: row.requesterOffDay,
+    mode: row.mode === "targeted" ? "targeted" : "open",
+    targetEducatorId: row.targetEducatorId ?? undefined,
+    targetEducatorName: row.targetEducatorName ?? undefined,
+    status: row.status as DayOffSwapRequest["status"],
+    acceptedById: row.acceptedById ?? undefined,
+    acceptedByName: row.acceptedByName ?? undefined,
+    counterpartyOffDay: row.counterpartyOffDay ?? undefined,
+    acceptedAt: row.acceptedAt?.toISOString(),
+    message: row.message ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export async function getPendingSwapByRequester(
+  requesterId: string
+): Promise<DayOffSwapRequest | null> {
+  const row = await prisma.dayOffSwapRequest.findFirst({
+    where: { requesterId, status: "pending" },
+    orderBy: { createdAt: "desc" },
+  });
+  return row ? dayOffSwapToType(row) : null;
+}
+
+export async function createDayOffSwapRequest(data: {
+  requesterId: string;
+  requesterName: string;
+  requesterIsQualified: boolean;
+  requesterOffDay: number;
+  mode: "open" | "targeted";
+  targetEducatorId?: string | null;
+  targetEducatorName?: string | null;
+  message?: string | null;
+}): Promise<DayOffSwapRequest> {
+  const row = await prisma.dayOffSwapRequest.create({
+    data: {
+      requesterId: data.requesterId,
+      requesterName: data.requesterName,
+      requesterIsQualified: data.requesterIsQualified,
+      requesterOffDay: data.requesterOffDay,
+      mode: data.mode,
+      targetEducatorId: data.targetEducatorId ?? null,
+      targetEducatorName: data.targetEducatorName ?? null,
+      status: "pending",
+      message: data.message?.trim() || null,
+    },
+  });
+  return dayOffSwapToType(row);
+}
+
+export async function getDayOffSwapDashboard(educatorId: string): Promise<{
+  inbox: DayOffSwapRequest[];
+  outgoing: DayOffSwapRequest[];
+  history: DayOffSwapRequest[];
+}> {
+  const viewerRow = await prisma.educator.findUnique({
+    where: { id: educatorId },
+    select: { isQualified: true },
+  });
+  const viewerQualified = viewerRow?.isQualified === true;
+
+  const allInvolving = await prisma.dayOffSwapRequest.findMany({
+    where: {
+      OR: [
+        { requesterId: educatorId },
+        { acceptedById: educatorId },
+        { targetEducatorId: educatorId },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+
+  const typed = allInvolving.map(dayOffSwapToType);
+
+  const inbox = typed.filter((s) => {
+    if (s.status !== "pending") return false;
+    if (s.mode === "open" && s.requesterId === educatorId) return false;
+    if (s.mode === "targeted" && s.targetEducatorId !== educatorId) return false;
+    if (!(s.mode === "open" || s.mode === "targeted")) return false;
+    if (s.requesterIsQualified && !viewerQualified) return false;
+    return true;
+  });
+
+  const outgoing = typed.filter(
+    (s) => s.status === "pending" && s.requesterId === educatorId
+  );
+
+  const history = typed.filter(
+    (s) =>
+      s.status === "confirmed" &&
+      (s.requesterId === educatorId || s.acceptedById === educatorId)
+  );
+
+  return { inbox, outgoing, history };
+}
+
+export async function getAllDayOffSwapRequests(
+  limit = 200
+): Promise<DayOffSwapRequest[]> {
+  const list = await prisma.dayOffSwapRequest.findMany({
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(limit, 1), 500),
+  });
+  return list.map(dayOffSwapToType);
+}
+
+export async function acceptDayOffSwap(params: {
+  swapId: string;
+  accepterId: string;
+  accepterName: string;
+  counterpartyOffDay: number;
+}): Promise<{ ok: true; swap: DayOffSwapRequest } | { ok: false; error: string }> {
+  const swap = await prisma.dayOffSwapRequest.findUnique({
+    where: { id: params.swapId },
+  });
+  if (!swap || swap.status !== "pending") {
+    return { ok: false, error: "Demande introuvable ou déjà traitée." };
+  }
+  if (swap.requesterId === params.accepterId) {
+    return { ok: false, error: "Vous ne pouvez pas accepter votre propre demande." };
+  }
+  if (swap.mode === "targeted") {
+    if (swap.targetEducatorId !== params.accepterId) {
+      return { ok: false, error: "Cette demande est destinée à une autre collègue." };
+    }
+  }
+
+  if (swap.requesterIsQualified) {
+    const accepterRow = await prisma.educator.findUnique({
+      where: { id: params.accepterId },
+      select: { isQualified: true },
+    });
+    if (accepterRow?.isQualified !== true) {
+      return {
+        ok: false,
+        error:
+          "Cette demande est réservée aux éducatrices qualifiées. Seule une collègue qualifiée peut accepter.",
+      };
+    }
+  }
+
+  const updated = await prisma.dayOffSwapRequest.updateMany({
+    where: { id: params.swapId, status: "pending" },
+    data: {
+      status: "confirmed",
+      acceptedById: params.accepterId,
+      acceptedByName: params.accepterName,
+      counterpartyOffDay: params.counterpartyOffDay,
+      acceptedAt: new Date(),
+    },
+  });
+
+  if (updated.count === 0) {
+    return {
+      ok: false,
+      error:
+        "Une autre collègue a déjà accepté cette demande ou elle a été annulée.",
+    };
+  }
+
+  const fresh = await prisma.dayOffSwapRequest.findUniqueOrThrow({
+    where: { id: params.swapId },
+  });
+  return { ok: true, swap: dayOffSwapToType(fresh) };
+}
+
+export async function cancelDayOffSwap(
+  swapId: string,
+  requesterId: string
+): Promise<{ ok: true; swap: DayOffSwapRequest } | { ok: false; error: string }> {
+  const swap = await prisma.dayOffSwapRequest.findUnique({
+    where: { id: swapId },
+  });
+  if (!swap) return { ok: false, error: "Demande introuvable." };
+  if (swap.requesterId !== requesterId) {
+    return { ok: false, error: "Seule la personne qui a fait la demande peut l’annuler." };
+  }
+  if (swap.status !== "pending") {
+    return { ok: false, error: "Cette demande n’est plus en attente." };
+  }
+  const row = await prisma.dayOffSwapRequest.update({
+    where: { id: swapId },
+    data: { status: "cancelled" },
+  });
+  return { ok: true, swap: dayOffSwapToType(row) };
+}
 
 export async function createAuditLog(data: {
   educatorId: string;
