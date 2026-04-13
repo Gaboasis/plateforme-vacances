@@ -238,6 +238,10 @@ export async function getVacationRequestById(id: string): Promise<VacationReques
   return req ? requestToType(req) : null;
 }
 
+export async function deleteVacationRequest(id: string): Promise<void> {
+  await prisma.vacationRequest.delete({ where: { id } });
+}
+
 /** Nombre d'urgences motivées en attente d'évaluation par l'admin */
 export async function getPendingAppealsCount(): Promise<number> {
   const count = await prisma.vacationRequest.count({
@@ -326,6 +330,7 @@ export const AUDIT_ACTIONS = {
   VACATION_CANCELLED_SELF: "vacation_cancelled_by_employee",
   VACATION_CANCEL_ADMIN_REQUESTED: "vacation_cancellation_admin_requested",
   VACATION_CANCELLED_ADMIN: "vacation_cancelled_by_admin",
+  VACATION_DELETED_ADMIN: "vacation_deleted_by_admin",
 } as const;
 
 function dayOffSwapToType(row: {

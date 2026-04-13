@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  getEducators,
   getVacationRequestById,
   updateVacationRequest,
+  deleteVacationRequest,
   AUDIT_ACTIONS,
   createAuditLog,
 } from "@/lib/store";
@@ -100,6 +102,59 @@ export async function PATCH(
       }
     }
     return NextResponse.json(updated);
+  } catch {
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
+}
+
+/** Suppression définitive en base (admin uniquement) — disparaît côté employé et admin. */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as {
+      adminId?: string;
+    };
+    const adminId = body.adminId?.trim();
+    if (!adminId) {
+      return NextResponse.json(
+        { error: "Identifiant administrateur requis." },
+        { status: 400 }
+      );
+    }
+    const educators = await getEducators();
+    const adminUser = educators.find((e) => e.id === adminId && e.role === "admin");
+    if (!adminUser) {
+      return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+    }
+    const existing = await getVacationRequestById(id);
+    if (!existing) {
+      return NextResponse.json({ error: "Demande introuvable" }, { status: 404 });
+    }
+    try {
+      await createAuditLog({
+        educatorId: adminUser.id,
+        educatorName: adminUser.name,
+        action: AUDIT_ACTIONS.VACATION_DELETED_ADMIN,
+        resourceType: "VacationRequest",
+        resourceId: id,
+        detail: JSON.stringify({
+          targetEducatorId: existing.educatorId,
+          targetEducatorName: existing.educatorName,
+          status: existing.status,
+          startDate: existing.startDate,
+          endDate: existing.endDate,
+        }),
+        ip: getClientIp(request),
+        userAgent: getUserAgent(request),
+      });
+    } catch (e) {
+      console.error("Audit vacation delete:", e);
+    }
+    await deleteVacationRequest(id);
+    return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }

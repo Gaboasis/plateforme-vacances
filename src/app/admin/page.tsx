@@ -210,6 +210,45 @@ export default function AdminPage() {
     }
   };
 
+  const getAdminFromSession = (): { id: string } | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = sessionStorage.getItem("user");
+      if (!raw) return null;
+      const u = JSON.parse(raw) as { id?: string; role?: string };
+      if (u.role === "admin" && u.id) return { id: u.id };
+    } catch {
+      /* ignore */
+    }
+    return null;
+  };
+
+  const handleDeleteVacationPermanently = async (requestId: string) => {
+    const admin = getAdminFromSession();
+    if (!admin) {
+      alert("Session admin introuvable. Reconnectez-vous.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Supprimer définitivement cette demande ? Elle disparaîtra pour l’employé·e et dans cette liste. Action irréversible."
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/requests/${requestId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adminId: admin.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setRequests((prev) => prev.filter((r) => r.id !== requestId));
+    } else {
+      alert(typeof data.error === "string" ? data.error : "Suppression impossible");
+    }
+  };
+
   const addBlackoutDate = () => {
     if (!newBlackoutDate || !rules) return;
     if (rules.blackoutDates.includes(newBlackoutDate)) return;
@@ -264,6 +303,8 @@ export default function AdminPage() {
         return "Demande d’annulation (admin)";
       case "vacation_cancelled_by_admin":
         return "Congé annulé (admin)";
+      case "vacation_deleted_by_admin":
+        return "Demande supprimée (admin)";
       default:
         return action;
     }
@@ -652,6 +693,14 @@ export default function AdminPage() {
                                 </button>
                               </div>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteVacationPermanently(req.id)}
+                              className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-rose-800 hover:bg-rose-100 touch-manipulation min-h-[44px] sm:min-h-0 inline-flex items-center justify-center gap-1.5"
+                            >
+                              <Trash2 className="h-4 w-4 shrink-0" />
+                              Supprimer définitivement
+                            </button>
                           </div>
                         </div>
                       ))}
