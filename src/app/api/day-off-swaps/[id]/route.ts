@@ -4,6 +4,8 @@ import {
   AUDIT_ACTIONS,
   cancelDayOffSwap,
   createAuditLog,
+  deleteDayOffSwapRequest,
+  getDayOffSwapRequestById,
   getEducators,
 } from "@/lib/store";
 import { getClientIp, getUserAgent } from "@/lib/audit-context";
@@ -93,6 +95,57 @@ export async function PATCH(
     }
 
     return NextResponse.json(result.swap);
+  } catch {
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as {
+      adminId?: string;
+    };
+    const adminId = body.adminId?.trim();
+    if (!adminId) {
+      return NextResponse.json(
+        { error: "Identifiant administrateur requis." },
+        { status: 400 }
+      );
+    }
+    const educators = await getEducators();
+    const adminUser = educators.find((e) => e.id === adminId && e.role === "admin");
+    if (!adminUser) {
+      return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+    }
+    const existing = await getDayOffSwapRequestById(id);
+    if (!existing) {
+      return NextResponse.json({ error: "Demande introuvable" }, { status: 404 });
+    }
+    try {
+      await createAuditLog({
+        educatorId: adminUser.id,
+        educatorName: adminUser.name,
+        action: AUDIT_ACTIONS.DAY_OFF_SWAP_DELETED_ADMIN,
+        resourceType: "DayOffSwapRequest",
+        resourceId: id,
+        detail: JSON.stringify({
+          requesterId: existing.requesterId,
+          requesterName: existing.requesterName,
+          status: existing.status,
+          requesterOffDay: existing.requesterOffDay,
+        }),
+        ip: getClientIp(request),
+        userAgent: getUserAgent(request),
+      });
+    } catch (e) {
+      console.error("Audit day-off swap delete:", e);
+    }
+    await deleteDayOffSwapRequest(id);
+    return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }

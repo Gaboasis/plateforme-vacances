@@ -249,6 +249,58 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteSickReportPermanently = async (reportId: string) => {
+    const admin = getAdminFromSession();
+    if (!admin) {
+      alert("Session admin introuvable. Reconnectez-vous.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Supprimer définitivement cette déclaration maladie ? Elle disparaîtra pour l’employé·e et dans cette liste. Action irréversible."
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/sick-leaves/${reportId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adminId: admin.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setSickReports((prev) => prev.filter((r) => r.id !== reportId));
+    } else {
+      alert(typeof data.error === "string" ? data.error : "Suppression impossible");
+    }
+  };
+
+  const handleDeleteDayOffSwapPermanently = async (swapId: string) => {
+    const admin = getAdminFromSession();
+    if (!admin) {
+      alert("Session admin introuvable. Reconnectez-vous.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Supprimer définitivement cette demande d’échange de jour ? Elle disparaîtra pour les employé·es et dans cette liste. Action irréversible."
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/day-off-swaps/${swapId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adminId: admin.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setDayOffSwaps((prev) => prev.filter((s) => s.id !== swapId));
+    } else {
+      alert(typeof data.error === "string" ? data.error : "Suppression impossible");
+    }
+  };
+
   const addBlackoutDate = () => {
     if (!newBlackoutDate || !rules) return;
     if (rules.blackoutDates.includes(newBlackoutDate)) return;
@@ -305,6 +357,10 @@ export default function AdminPage() {
         return "Congé annulé (admin)";
       case "vacation_deleted_by_admin":
         return "Demande supprimée (admin)";
+      case "sick_leave_deleted_by_admin":
+        return "Maladie supprimée (admin)";
+      case "day_off_swap_deleted_by_admin":
+        return "Échange de jour supprimé (admin)";
       default:
         return action;
     }
@@ -792,6 +848,14 @@ export default function AdminPage() {
                               </span>
                             )}
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSickReportPermanently(s.id)}
+                            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800 hover:bg-rose-100 touch-manipulation"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                            Supprimer définitivement
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -826,6 +890,7 @@ export default function AdminPage() {
                     <th className="px-3 py-3 sm:px-4">Mode</th>
                     <th className="px-3 py-3 sm:px-4">Statut</th>
                     <th className="px-3 py-3 sm:px-4">Échange</th>
+                    <th className="px-3 py-3 sm:px-4 w-32">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -885,6 +950,18 @@ export default function AdminPage() {
                             {s.message}
                           </span>
                         ) : null}
+                      </td>
+                      <td className="px-3 py-3 sm:px-4 align-middle">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteDayOffSwapPermanently(s.id)
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-100 touch-manipulation whitespace-nowrap"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                          Supprimer
+                        </button>
                       </td>
                     </tr>
                   ))}

@@ -321,6 +321,10 @@ export async function getSickLeaveReportByIdRaw(id: string) {
   return prisma.sickLeaveReport.findUnique({ where: { id } });
 }
 
+export async function deleteSickLeaveReport(id: string): Promise<void> {
+  await prisma.sickLeaveReport.delete({ where: { id } });
+}
+
 export const AUDIT_ACTIONS = {
   VACATION_SUBMITTED: "vacation_request_submitted",
   SICK_LEAVE_SUBMITTED: "sick_leave_submitted",
@@ -331,6 +335,8 @@ export const AUDIT_ACTIONS = {
   VACATION_CANCEL_ADMIN_REQUESTED: "vacation_cancellation_admin_requested",
   VACATION_CANCELLED_ADMIN: "vacation_cancelled_by_admin",
   VACATION_DELETED_ADMIN: "vacation_deleted_by_admin",
+  SICK_LEAVE_DELETED_ADMIN: "sick_leave_deleted_by_admin",
+  DAY_OFF_SWAP_DELETED_ADMIN: "day_off_swap_deleted_by_admin",
 } as const;
 
 function dayOffSwapToType(row: {
@@ -462,6 +468,17 @@ export async function getAllDayOffSwapRequests(
     take: Math.min(Math.max(limit, 1), 500),
   });
   return list.map(dayOffSwapToType);
+}
+
+export async function getDayOffSwapRequestById(
+  id: string
+): Promise<DayOffSwapRequest | null> {
+  const row = await prisma.dayOffSwapRequest.findUnique({ where: { id } });
+  return row ? dayOffSwapToType(row) : null;
+}
+
+export async function deleteDayOffSwapRequest(id: string): Promise<void> {
+  await prisma.dayOffSwapRequest.delete({ where: { id } });
 }
 
 export async function acceptDayOffSwap(params: {
