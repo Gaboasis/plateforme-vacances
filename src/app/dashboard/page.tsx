@@ -556,7 +556,7 @@ export default function DashboardPage() {
             className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             <CalendarPlus className="h-5 w-5 shrink-0" />
-            Nouvelle demande
+            Congé
           </button>
           <button
             type="button"
@@ -1123,7 +1123,7 @@ export default function DashboardPage() {
             <CalendarPlus className="mx-auto h-12 w-12 text-slate-300" />
             <p className="mt-4 text-slate-500">Aucune demande pour le moment</p>
             <p className="text-sm text-slate-400">
-              Cliquez sur &quot;Nouvelle demande&quot; pour commencer
+              Cliquez sur &quot;Congé&quot; pour commencer
             </p>
           </div>
         ) : (
