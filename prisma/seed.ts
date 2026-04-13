@@ -15,7 +15,7 @@ const educators = [
   { id: "9", name: "Loubaba", email: "loubaba@garderie.fr", role: "educatrice" as const, seniorityRank: 9, isQualified: true },
   { id: "10", name: "Karima", email: "karima@garderie.fr", role: "educatrice" as const, seniorityRank: 10, isQualified: true },
   { id: "11", name: "Manal", email: "manal@garderie.fr", role: "educatrice" as const, seniorityRank: 11, isQualified: false },
-  { id: "12", name: "Fatima", email: "fatima@garderie.fr", role: "educatrice" as const, seniorityRank: 12, isQualified: false },
+  { id: "aicha", name: "Aicha", email: "aicha@garderie.fr", role: "educatrice" as const, seniorityRank: 12, isQualified: false },
   { id: "amineh", name: "Amineh", email: "amineh@garderie.fr", role: "cuisiniere" as const },
   { id: "zooka", name: "Zooka", email: "zooka@garderie.fr", role: "entretien" as const },
   { id: "kamar", name: "Kamar", email: "kamar@garderie.fr", role: "secretaire" as const },
@@ -50,7 +50,27 @@ const defaultRules = {
   biWeekRules: Array(52).fill(null),
 };
 
+/** Ancien profil «12 » / Fatima : données et compte supprimés pour repartir avec Aicha (id `aicha`). */
+async function removeLegacyEducator12() {
+  const legacyId = "12";
+  await prisma.vacationRequest.deleteMany({ where: { educatorId: legacyId } });
+  await prisma.sickLeaveReport.deleteMany({ where: { educatorId: legacyId } });
+  await prisma.dayOffSwapRequest.deleteMany({
+    where: {
+      OR: [
+        { requesterId: legacyId },
+        { targetEducatorId: legacyId },
+        { acceptedById: legacyId },
+      ],
+    },
+  });
+  await prisma.activityAuditLog.deleteMany({ where: { educatorId: legacyId } });
+  await prisma.educator.deleteMany({ where: { id: legacyId } });
+}
+
 async function main() {
+  await removeLegacyEducator12();
+
   for (let i = 0; i < educators.length; i++) {
     const edu = educators[i];
     const existing = await prisma.educator.findUnique({
