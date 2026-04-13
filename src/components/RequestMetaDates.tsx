@@ -69,6 +69,18 @@ export function RequestMetaDates({ req }: { req: VacationRequest }) {
           )}
         </li>
       )}
+      {req.status === "cancelled" && req.cancelledAt && (
+        <li className="text-slate-600">
+          <span className="font-medium text-slate-700">Annulée le :</span>{" "}
+          {formatFrDateTime(req.cancelledAt)}
+        </li>
+      )}
+      {req.status === "accepted" && req.cancellationPendingAt && (
+        <li className="text-amber-800">
+          <span className="font-medium">Annulation :</span> demande envoyée à
+          l&apos;administration le {formatFrDateTime(req.cancellationPendingAt)}
+        </li>
+      )}
     </ul>
   );
 }

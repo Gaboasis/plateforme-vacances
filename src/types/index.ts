@@ -1,4 +1,4 @@
-export type RequestStatus = "pending" | "accepted" | "rejected";
+export type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
 
 export interface Educator {
   id: string;
@@ -24,6 +24,10 @@ export interface VacationRequest {
   createdAt: string;
   reviewedAt?: string;
   rejectionReason?: string;
+  /** Annulation par l’employé ou l’admin */
+  cancelledAt?: string;
+  /** Demande d’annulation après délai — traitement admin */
+  cancellationPendingAt?: string;
   /** Raison d'urgence motivée soumise par l'éducatrice */
   urgentAppealReason?: string;
   /** Date de traitement de l'appel par l'admin */

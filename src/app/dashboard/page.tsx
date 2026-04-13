@@ -11,6 +11,7 @@ import {
   Stethoscope,
   Paperclip,
   ArrowLeftRight,
+  Ban,
 } from "lucide-react";
 import type {
   Educator,
@@ -20,6 +21,10 @@ import type {
 } from "@/types";
 import { ISO_WEEKDAY_OPTIONS, isoWeekdayLabel } from "@/lib/weekday-fr";
 import { RequestMetaDates } from "@/components/RequestMetaDates";
+import {
+  canEmployeeSelfCancelAcceptedNow,
+  getEmployeeSelfCancelLastMoment,
+} from "@/lib/vacation-self-cancel";
 
 function UrgentAppealForm({
   requestId,
@@ -124,6 +129,13 @@ export default function DashboardPage() {
   const [sickSubmitting, setSickSubmitting] = useState(false);
   const [sickError, setSickError] = useState("");
   const [sickSuccessMsg, setSickSuccessMsg] = useState("");
+  const [leaveNotice, setLeaveNotice] = useState<{
+    kind: "ok" | "err";
+    text: string;
+  } | null>(null);
+  const [vacationCancelLoading, setVacationCancelLoading] = useState<
+    string | null
+  >(null);
 
   const [swapBundle, setSwapBundle] = useState<{
     inbox: DayOffSwapRequest[];
@@ -338,6 +350,12 @@ export default function DashboardPage() {
           <XCircle className="h-3.5 w-3.5" /> Refusée
         </span>
       );
+    if (status === "cancelled")
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+          <Ban className="h-3.5 w-3.5" /> Annulée
+        </span>
+      );
     return (
       <span className="badge-pending flex items-center gap-1">
         <Clock className="h-3.5 w-3.5" /> En attente
@@ -457,6 +475,72 @@ export default function DashboardPage() {
       loadSwaps(user.id, user.role);
     } catch {
       setSwapError("Erreur de connexion");
+    }
+  };
+
+  const handleVacationSelfCancel = async (requestId: string) => {
+    if (!user) return;
+    setVacationCancelLoading(requestId);
+    setLeaveNotice(null);
+    try {
+      const res = await fetch(`/api/requests/${requestId}/employee-cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ educatorId: user.id, action: "self_cancel" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLeaveNotice({
+          kind: "err",
+          text: data.error || "Annulation impossible",
+        });
+        return;
+      }
+      setRequests((prev) => prev.map((r) => (r.id === requestId ? data : r)));
+      setLeaveNotice({
+        kind: "ok",
+        text: "Votre congé a été annulé.",
+      });
+    } catch {
+      setLeaveNotice({
+        kind: "err",
+        text: "Erreur de connexion",
+      });
+    } finally {
+      setVacationCancelLoading(null);
+    }
+  };
+
+  const handleVacationRequestAdminCancel = async (requestId: string) => {
+    if (!user) return;
+    setVacationCancelLoading(requestId);
+    setLeaveNotice(null);
+    try {
+      const res = await fetch(`/api/requests/${requestId}/employee-cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ educatorId: user.id, action: "request_admin" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLeaveNotice({
+          kind: "err",
+          text: data.error || "Envoi impossible",
+        });
+        return;
+      }
+      setRequests((prev) => prev.map((r) => (r.id === requestId ? data : r)));
+      setLeaveNotice({
+        kind: "ok",
+        text: "Demande d’annulation envoyée à l’administration.",
+      });
+    } catch {
+      setLeaveNotice({
+        kind: "err",
+        text: "Erreur de connexion",
+      });
+    } finally {
+      setVacationCancelLoading(null);
     }
   };
 
@@ -1114,6 +1198,18 @@ export default function DashboardPage() {
         <h2 className="font-display text-base sm:text-lg font-semibold text-slate-800 mb-4">
           Mes demandes
         </h2>
+        {leaveNotice && (
+          <div
+            className={`mb-4 rounded-xl p-3 text-sm ${
+              leaveNotice.kind === "ok"
+                ? "border border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border border-rose-200 bg-rose-50 text-rose-800"
+            }`}
+          >
+            {leaveNotice.kind === "ok" ? "\u2713 " : ""}
+            {leaveNotice.text}
+          </div>
+        )}
         {loading ? (
           <div className="card flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
@@ -1128,55 +1224,109 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {requests.map((req) => (
-              <div
-                key={req.id}
-                className="card-hover flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-6"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-slate-800 text-sm sm:text-base">
-                    {format(parseISO(req.startDate), "d MMM yyyy", { locale: fr })} —{" "}
-                    {format(parseISO(req.endDate), "d MMM yyyy", { locale: fr })}
-                  </p>
-                  {req.reason && (
-                    <p className="mt-1 text-sm text-slate-500">{req.reason}</p>
-                  )}
-                  {req.status === "rejected" && req.rejectionReason && (
-                    <p className="mt-2 text-sm text-rose-600">
-                      Motif : {req.rejectionReason}
+            {requests.map((req) => {
+              const selfCancelInfo =
+                req.status === "accepted"
+                  ? getEmployeeSelfCancelLastMoment(req.createdAt, req.startDate)
+                  : null;
+              const canSelfCancelLeave =
+                req.status === "accepted" &&
+                canEmployeeSelfCancelAcceptedNow(req.createdAt, req.startDate);
+              return (
+                <div
+                  key={req.id}
+                  className="card-hover flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-6"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-slate-800 text-sm sm:text-base">
+                      {format(parseISO(req.startDate), "d MMM yyyy", {
+                        locale: fr,
+                      })}{" "}
+                      —{" "}
+                      {format(parseISO(req.endDate), "d MMM yyyy", { locale: fr })}
                     </p>
-                  )}
-                  <RequestMetaDates req={req} />
-                  {req.status === "rejected" && !req.urgentAppealReason && user && (
-                    <div className="mt-2">
-                      {expandedAppealFor === req.id ? (
-                        <UrgentAppealForm
-                          requestId={req.id}
-                          educatorId={user.id}
-                          onSuccess={(updated) => {
-                            setRequests((prev) =>
-                              prev.map((r) => (r.id === updated.id ? updated : r))
-                            );
-                            setExpandedAppealFor(null);
-                          }}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setExpandedAppealFor(req.id)}
-                          className="text-sm font-medium text-primary-600 hover:underline"
-                        >
-                          Urgence motivée ? Soumettre à l&apos;administration
-                        </button>
-                      )}
-                    </div>
-                  )}
+                    {req.reason && (
+                      <p className="mt-1 text-sm text-slate-500">{req.reason}</p>
+                    )}
+                    {req.status === "rejected" && req.rejectionReason && (
+                      <p className="mt-2 text-sm text-rose-600">
+                        Motif : {req.rejectionReason}
+                      </p>
+                    )}
+                    <RequestMetaDates req={req} />
+                    {req.status === "rejected" && !req.urgentAppealReason && user && (
+                      <div className="mt-2">
+                        {expandedAppealFor === req.id ? (
+                          <UrgentAppealForm
+                            requestId={req.id}
+                            educatorId={user.id}
+                            onSuccess={(updated) => {
+                              setRequests((prev) =>
+                                prev.map((r) => (r.id === updated.id ? updated : r))
+                              );
+                              setExpandedAppealFor(null);
+                            }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedAppealFor(req.id)}
+                            className="text-sm font-medium text-primary-600 hover:underline"
+                          >
+                            Urgence motivée ? Soumettre à l&apos;administration
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="shrink-0 self-start sm:self-center flex flex-col items-stretch sm:items-end gap-2 max-w-full sm:max-w-xs">
+                    <StatusBadge status={req.status} />
+                    {req.status === "accepted" && selfCancelInfo && (
+                      <>
+                        {req.cancellationPendingAt ? (
+                          <p className="text-xs text-amber-800 text-right">
+                            Demande d&apos;annulation en attente auprès de
+                            l&apos;administration.
+                          </p>
+                        ) : canSelfCancelLeave ? (
+                          <button
+                            type="button"
+                            disabled={vacationCancelLoading === req.id}
+                            onClick={() => handleVacationSelfCancel(req.id)}
+                            className="text-sm font-medium text-rose-700 hover:underline disabled:opacity-50 touch-manipulation text-right"
+                          >
+                            {vacationCancelLoading === req.id
+                              ? "Annulation…"
+                              : "Annuler mon congé"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={vacationCancelLoading === req.id}
+                            onClick={() => handleVacationRequestAdminCancel(req.id)}
+                            className="text-sm font-medium text-amber-800 hover:underline disabled:opacity-50 touch-manipulation text-right"
+                          >
+                            {vacationCancelLoading === req.id
+                              ? "Envoi…"
+                              : "Demander l’annulation à l’administration"}
+                          </button>
+                        )}
+                        <p className="text-xs text-slate-500 text-right leading-snug">
+                          {selfCancelInfo.labelFr}{" "}
+                          <span className="block sm:inline sm:before:content-['—_']">
+                            Limite pour annuler seul :{" "}
+                            {format(selfCancelInfo.lastMoment, "d MMM yyyy", {
+                              locale: fr,
+                            })}
+                            .
+                          </span>
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="shrink-0 self-start sm:self-center">
-                  <StatusBadge status={req.status} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

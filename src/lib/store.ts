@@ -42,6 +42,8 @@ function requestToType(req: {
   appealReviewedAt: Date | null;
   createdAt: Date;
   reviewedAt: Date | null;
+  cancelledAt: Date | null;
+  cancellationPendingAt: Date | null;
 }): VacationRequest {
   return {
     id: req.id,
@@ -56,6 +58,8 @@ function requestToType(req: {
     appealReviewedAt: req.appealReviewedAt?.toISOString(),
     createdAt: req.createdAt.toISOString(),
     reviewedAt: req.reviewedAt?.toISOString(),
+    cancelledAt: req.cancelledAt?.toISOString(),
+    cancellationPendingAt: req.cancellationPendingAt?.toISOString(),
   };
 }
 
@@ -159,9 +163,15 @@ export async function addVacationRequest(
   return requestToType(req);
 }
 
+export type VacationRequestUpdate = Partial<
+  Omit<VacationRequest, "cancellationPendingAt">
+> & {
+  cancellationPendingAt?: string | null;
+};
+
 export async function updateVacationRequest(
   id: string,
-  updates: Partial<VacationRequest>
+  updates: VacationRequestUpdate
 ) {
   const existing = await prisma.vacationRequest.findUnique({ where: { id } });
   if (!existing) {
@@ -174,6 +184,17 @@ export async function updateVacationRequest(
   if (updates.urgentAppealReason != null) data.urgentAppealReason = updates.urgentAppealReason;
   if (updates.appealReviewedAt != null) data.appealReviewedAt = new Date(updates.appealReviewedAt);
 
+  if ("cancellationPendingAt" in updates) {
+    const v = updates.cancellationPendingAt;
+    data.cancellationPendingAt =
+      v === null || v === undefined ? null : new Date(v);
+  }
+
+  if (updates.status === "cancelled") {
+    data.cancelledAt = new Date();
+    data.cancellationPendingAt = null;
+  }
+
   const newStatus = (updates.status ?? existing.status) as VacationRequest["status"];
   const isAppealResolution =
     Boolean(existing.urgentAppealReason) &&
@@ -181,7 +202,12 @@ export async function updateVacationRequest(
     updates.appealReviewedAt != null;
 
   // Date de la première acceptation / refus : une seule fois, pas écrasée lors du traitement d'une urgence motivée
-  if (newStatus !== "pending" && !isAppealResolution && !existing.reviewedAt) {
+  if (
+    newStatus !== "pending" &&
+    newStatus !== "cancelled" &&
+    !isAppealResolution &&
+    !existing.reviewedAt
+  ) {
     data.reviewedAt = new Date();
   }
 
@@ -297,6 +323,9 @@ export const AUDIT_ACTIONS = {
   VACATION_URGENT_APPEAL: "vacation_urgent_appeal_submitted",
   USER_LOGIN_SUCCESS: "user_login_success",
   DAY_OFF_SWAP_CONFIRMED: "day_off_swap_confirmed",
+  VACATION_CANCELLED_SELF: "vacation_cancelled_by_employee",
+  VACATION_CANCEL_ADMIN_REQUESTED: "vacation_cancellation_admin_requested",
+  VACATION_CANCELLED_ADMIN: "vacation_cancelled_by_admin",
 } as const;
 
 function dayOffSwapToType(row: {

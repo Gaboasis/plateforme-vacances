@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Educator {
@@ -27,12 +26,14 @@ model VacationRequest {
   startDate           DateTime
   endDate             DateTime
   reason              String?
-  status              String    // "pending" | "accepted" | "rejected"
+  status              String    // "pending" | "accepted" | "rejected" | "cancelled"
   rejectionReason     String?
   urgentAppealReason  String?   // Raison d'urgence soumise par l'éducatrice
   appealReviewedAt    DateTime? // Quand l'admin a traité l'appel
   createdAt           DateTime  @default(now())
   reviewedAt          DateTime?
+  cancelledAt         DateTime?
+  cancellationPendingAt DateTime? // Employé : demande d’annulation après échéance (en attente admin)
 }
 
 model VacationRulesConfig {

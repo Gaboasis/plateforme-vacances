@@ -14,11 +14,28 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status, rejectionReason, urgentAppealReason, educatorId } = body;
+    const {
+      status,
+      rejectionReason,
+      urgentAppealReason,
+      educatorId,
+      clearCancellationPending,
+    } = body;
 
     const existing = await getVacationRequestById(id);
     if (!existing) {
       return NextResponse.json({ error: "Demande introuvable" }, { status: 404 });
+    }
+
+    if (clearCancellationPending === true) {
+      if (!existing.cancellationPendingAt) {
+        return NextResponse.json(
+          { error: "Aucune demande d’annulation en attente." },
+          { status: 400 }
+        );
+      }
+      const updated = await updateVacationRequest(id, { cancellationPendingAt: null });
+      return NextResponse.json(updated);
     }
 
     // Soumission d'une urgence motivée par l'éducatrice
@@ -50,7 +67,7 @@ export async function PATCH(
       return NextResponse.json(updated);
     }
 
-    // Mise à jour par l'admin (accepter/refuser)
+    // Mise à jour par l'admin (accepter/refuser/annuler congé accepté)
     const updates: Parameters<typeof updateVacationRequest>[1] = {
       status: status ?? existing.status,
       rejectionReason: rejectionReason ?? existing.rejectionReason,
@@ -62,6 +79,26 @@ export async function PATCH(
       }
     }
     const updated = await updateVacationRequest(id, updates);
+    if (status === "cancelled" && existing.status === "accepted") {
+      try {
+        await createAuditLog({
+          educatorId: existing.educatorId,
+          educatorName: existing.educatorName,
+          action: AUDIT_ACTIONS.VACATION_CANCELLED_ADMIN,
+          resourceType: "VacationRequest",
+          resourceId: id,
+          detail: JSON.stringify({
+            startDate: existing.startDate,
+            endDate: existing.endDate,
+            hadPendingRequest: Boolean(existing.cancellationPendingAt),
+          }),
+          ip: getClientIp(request),
+          userAgent: getUserAgent(request),
+        });
+      } catch (e) {
+        console.error("Audit admin cancel:", e);
+      }
+    }
     return NextResponse.json(updated);
   } catch {
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });

@@ -228,7 +228,8 @@ export function validateVacationRequest(
     (r) =>
       r.educatorId === request.educatorId &&
       new Date(r.createdAt) >= monthStart &&
-      r.status !== "rejected"
+      r.status !== "rejected" &&
+      r.status !== "cancelled"
   );
   if (requestsThisMonth.length >= rules.maxRequestsPerMonth) {
     return {
@@ -244,7 +245,8 @@ export function validateVacationRequest(
     (r) =>
       r.educatorId === request.educatorId &&
       new Date(r.createdAt) >= yearStart &&
-      r.status !== "rejected"
+      r.status !== "rejected" &&
+      r.status !== "cancelled"
   );
   if (requestsThisYear.length >= maxPerYear) {
     return {

@@ -18,6 +18,7 @@ import {
   ScrollText,
   LogIn,
   ArrowLeftRight,
+  Ban,
 } from "lucide-react";
 import type {
   VacationRequest,
@@ -195,6 +196,20 @@ export default function AdminPage() {
     }
   };
 
+  const handleRejectCancellationPending = async (id: string) => {
+    const res = await fetch(`/api/requests/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clearCancellationPending: true }),
+    });
+    const updated = res.ok ? await res.json() : null;
+    if (updated) {
+      setRequests((prev) =>
+        prev.map((r) => (r.id === id ? updated : r))
+      );
+    }
+  };
+
   const addBlackoutDate = () => {
     if (!newBlackoutDate || !rules) return;
     if (rules.blackoutDates.includes(newBlackoutDate)) return;
@@ -243,6 +258,12 @@ export default function AdminPage() {
         return "Connexion";
       case "day_off_swap_confirmed":
         return "Échange journée confirmé";
+      case "vacation_cancelled_by_employee":
+        return "Congé annulé (employé)";
+      case "vacation_cancellation_admin_requested":
+        return "Demande d’annulation (admin)";
+      case "vacation_cancelled_by_admin":
+        return "Congé annulé (admin)";
       default:
         return action;
     }
@@ -299,6 +320,12 @@ export default function AdminPage() {
       return (
         <span className="badge-rejected flex items-center gap-1">
           <XCircle className="h-3.5 w-3.5" /> Refusée
+        </span>
+      );
+    if (status === "cancelled")
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+          <Ban className="h-3.5 w-3.5" /> Annulée
         </span>
       );
     return (
@@ -554,10 +581,50 @@ export default function AdminPage() {
                                   </p>
                                 </div>
                               )}
+                            {req.status === "accepted" && req.cancellationPendingAt && (
+                              <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                                L&apos;employé demande d&apos;annuler ce congé
+                                (délai employé dépassé). Approuver = annuler le
+                                congé ; refuser = la demande reste acceptée.
+                              </div>
+                            )}
                             <RequestMetaDates req={req} />
                           </div>
                           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-2 shrink-0">
                             <StatusBadge status={req.status} />
+                            {req.status === "accepted" && req.cancellationPendingAt && (
+                              <div className="flex gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleUpdateRequestStatus(req.id, "cancelled")
+                                  }
+                                  className="rounded-lg bg-slate-800 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-white hover:bg-slate-900 touch-manipulation min-h-[44px] sm:min-h-0"
+                                >
+                                  Approuver l&apos;annulation
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleRejectCancellationPending(req.id)
+                                  }
+                                  className="rounded-lg bg-emerald-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-200 touch-manipulation min-h-[44px] sm:min-h-0"
+                                >
+                                  Refuser (garder le congé)
+                                </button>
+                              </div>
+                            )}
+                            {req.status === "accepted" && !req.cancellationPendingAt && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateRequestStatus(req.id, "cancelled")
+                                }
+                                className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 sm:py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 touch-manipulation min-h-[44px] sm:min-h-0"
+                              >
+                                Annuler ce congé (admin)
+                              </button>
+                            )}
                             {(req.status === "pending" ||
                               (req.status === "rejected" &&
                                 req.urgentAppealReason &&
