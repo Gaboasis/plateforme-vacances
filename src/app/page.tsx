@@ -83,15 +83,20 @@ export default function HomePage() {
           <div className="text-center">
             <div className="mb-2 sm:mb-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-white backdrop-blur-sm">
               <Palette className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Gestion simplifiée des congés</span>
-              <span className="sm:hidden">Congés</span>
+              <span className="hidden sm:inline">
+                Congés, maladie et échange de journée
+              </span>
+              <span className="sm:hidden">Congés · Maladie · Échange</span>
             </div>
-            <h1 className="font-display text-lg sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
-              <span className="sm:hidden">Les Amis Bout De Choux</span>
-              <span className="hidden sm:inline">Gestion Vacances Les Amis Bout De Choux</span>
+            <h1 className="font-display text-base sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight px-1">
+              Congés, maladie et échange de journée
             </h1>
-            <p className="mx-auto mt-1 sm:mt-6 max-w-2xl text-xs sm:text-lg text-primary-100 px-2 sm:block hidden">
-              Demandez vos congés en quelques clics.
+            <p className="mt-2 text-sm sm:text-base font-medium text-primary-100/95">
+              Les Amis Bout De Choux
+            </p>
+            <p className="mx-auto mt-2 sm:mt-5 max-w-2xl text-xs sm:text-lg text-primary-100 px-2">
+              Une seule plateforme pour vos demandes de congés, vos avis maladie et
+              vos échanges de journée de congé.
             </p>
           </div>
         </div>

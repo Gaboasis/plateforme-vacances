@@ -13,8 +13,9 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Gestion Vacances - Les Amis Bout De Choux",
-  description: "Gestion des demandes de congés - Les Amis Bout De Choux",
+  title: "Congés, maladie et échange de journée — Les Amis Bout De Choux",
+  description:
+    "Congés, déclarations maladie et échanges de journée — Les Amis Bout De Choux",
 };
 
 export const viewport = {
