@@ -1,0 +1,38 @@
+[
+  {
+    "educatorId": "2",
+    "educatorName": "Rafika",
+    "startDate": "2026-06-25",
+    "endDate": "2026-08-17",
+    "createdAt": "2026-02-15T12:00:00.000Z",
+    "reviewedAt": "2026-02-15T12:00:00.000Z",
+    "reason": "Congé approuvé avant la plateforme (acceptation 15 fév. 2026)"
+  },
+  {
+    "educatorId": "3",
+    "educatorName": "Saliha",
+    "startDate": "2026-07-02",
+    "endDate": "2026-07-31",
+    "createdAt": "2026-03-15T12:00:00.000Z",
+    "reviewedAt": "2026-03-15T12:00:00.000Z",
+    "reason": "Congé approuvé avant la plateforme (acceptation 15 mars 2026)"
+  },
+  {
+    "educatorId": "5",
+    "educatorName": "Souhir",
+    "startDate": "2026-08-03",
+    "endDate": "2026-08-14",
+    "createdAt": "2026-03-01T12:00:00.000Z",
+    "reviewedAt": "2026-03-01T12:00:00.000Z",
+    "reason": "Congé approuvé avant la plateforme (acceptation 1er mars 2026)"
+  },
+  {
+    "educatorId": "amineh",
+    "educatorName": "Amineh",
+    "startDate": "2026-08-01",
+    "endDate": "2026-09-01",
+    "createdAt": "2026-02-15T12:00:00.000Z",
+    "reviewedAt": "2026-02-15T12:00:00.000Z",
+    "reason": "Congé approuvé avant la plateforme (acceptation 15 fév. 2026)"
+  }
+]

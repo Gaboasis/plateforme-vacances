@@ -40,6 +40,7 @@ function requestToType(req: {
   rejectionReason: string | null;
   urgentAppealReason: string | null;
   appealReviewedAt: Date | null;
+  legacyImport: boolean;
   createdAt: Date;
   reviewedAt: Date | null;
   cancelledAt: Date | null;
@@ -56,6 +57,7 @@ function requestToType(req: {
     rejectionReason: req.rejectionReason ?? undefined,
     urgentAppealReason: req.urgentAppealReason ?? undefined,
     appealReviewedAt: req.appealReviewedAt?.toISOString(),
+    legacyImport: req.legacyImport,
     createdAt: req.createdAt.toISOString(),
     reviewedAt: req.reviewedAt?.toISOString(),
     cancelledAt: req.cancelledAt?.toISOString(),
@@ -144,11 +146,28 @@ export async function setVacationRules(rules: Partial<VacationRules>) {
   return merged;
 }
 
+export type AddVacationRequestOptions = {
+  /** Import pré-plateforme : même poids que les autres congés acceptés pour les règles ; sert au libellé « Avant plateforme » */
+  legacyImport?: boolean;
+  createdAt?: Date;
+  reviewedAt?: Date | null;
+};
+
 export async function addVacationRequest(
-  request: Omit<VacationRequest, "id" | "createdAt" | "status">,
-  status: VacationRequest["status"] = "accepted"
+  request: Omit<VacationRequest, "id" | "createdAt" | "status" | "legacyImport">,
+  status: VacationRequest["status"] = "accepted",
+  options?: AddVacationRequestOptions
 ): Promise<VacationRequest> {
   const now = new Date();
+  const legacyImport = Boolean(options?.legacyImport);
+  const createdAt = options?.createdAt ?? now;
+  const reviewedAt =
+    status === "pending"
+      ? null
+      : options?.reviewedAt !== undefined
+        ? options.reviewedAt
+        : now;
+
   const req = await prisma.vacationRequest.create({
     data: {
       educatorId: request.educatorId,
@@ -157,10 +176,48 @@ export async function addVacationRequest(
       endDate: new Date(request.endDate),
       reason: request.reason,
       status,
-      reviewedAt: status !== "pending" ? now : null,
+      legacyImport,
+      createdAt,
+      reviewedAt,
     },
   });
   return requestToType(req);
+}
+
+/** Congés déjà approuvés hors plateforme : insertion sans passage par la validation (contournement ponctuel à l’import). */
+export async function importLegacyVacationRequests(
+  rows: Array<{
+    educatorId: string;
+    educatorName: string;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+    createdAt?: Date;
+    reviewedAt?: Date;
+  }>
+): Promise<number> {
+  const back = (row: (typeof rows)[number]) =>
+    row.createdAt ?? row.reviewedAt ?? new Date(row.startDate);
+  let n = 0;
+  for (const row of rows) {
+    await addVacationRequest(
+      {
+        educatorId: row.educatorId,
+        educatorName: row.educatorName,
+        startDate: row.startDate,
+        endDate: row.endDate,
+        reason: row.reason ?? "Congé approuvé avant la plateforme",
+      },
+      "accepted",
+      {
+        legacyImport: true,
+        createdAt: back(row),
+        reviewedAt: row.reviewedAt ?? back(row),
+      }
+    );
+    n += 1;
+  }
+  return n;
 }
 
 export type VacationRequestUpdate = Partial<

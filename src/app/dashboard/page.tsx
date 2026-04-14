@@ -1310,7 +1310,17 @@ export default function DashboardPage() {
                     )}
                   </div>
                   <div className="shrink-0 self-start sm:self-center flex flex-col items-stretch sm:items-end gap-2 max-w-full sm:max-w-xs">
-                    <StatusBadge status={req.status} />
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <StatusBadge status={req.status} />
+                      {req.legacyImport && (
+                        <span
+                          className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600"
+                          title="Congé approuvé avant la plateforme (pris en compte pour les règles comme les autres congés acceptés)"
+                        >
+                          Avant plateforme
+                        </span>
+                      )}
+                    </div>
                     {req.status === "accepted" && selfCancelInfo && (
                       <>
                         {req.cancellationPendingAt ? (

@@ -10,7 +10,8 @@
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "db:clear-requests": "prisma db execute --file scripts/delete-vacation-requests.sql --schema prisma/schema.prisma",
-    "db:clear-demo-requests": "prisma db execute --file scripts/delete-demo-vacation-requests.sql --schema prisma/schema.prisma"
+    "db:clear-demo-requests": "prisma db execute --file scripts/delete-demo-vacation-requests.sql --schema prisma/schema.prisma",
+    "import-legacy-vacations": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"CommonJS\"}' ts-node scripts/import-legacy-vacations.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

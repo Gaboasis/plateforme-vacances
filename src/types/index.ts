@@ -21,6 +21,8 @@ export interface VacationRequest {
   endDate: string;
   reason?: string;
   status: RequestStatus;
+  /** true = congé approuvé avant la plateforme (affichage seulement ; compté comme les autres pour les règles) */
+  legacyImport?: boolean;
   createdAt: string;
   reviewedAt?: string;
   rejectionReason?: string;

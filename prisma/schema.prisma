@@ -30,6 +30,7 @@ model VacationRequest {
   rejectionReason     String?
   urgentAppealReason  String?   // Raison d'urgence soumise par l'éducatrice
   appealReviewedAt    DateTime? // Quand l'admin a traité l'appel
+  legacyImport        Boolean   @default(false) // Pré-plateforme (affichage) ; inclus dans les calculs de règles comme tout congé accepté
   createdAt           DateTime  @default(now())
   reviewedAt          DateTime?
   cancelledAt         DateTime?

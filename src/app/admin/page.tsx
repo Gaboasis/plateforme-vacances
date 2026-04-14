@@ -688,7 +688,17 @@ export default function AdminPage() {
                             <RequestMetaDates req={req} />
                           </div>
                           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-2 shrink-0">
-                            <StatusBadge status={req.status} />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge status={req.status} />
+                              {req.legacyImport && (
+                                <span
+                                  className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600"
+                                  title="Congé approuvé avant la plateforme (compté comme les autres pour les règles)"
+                                >
+                                  Avant plateforme
+                                </span>
+                              )}
+                            </div>
                             {req.status === "accepted" && req.cancellationPendingAt && (
                               <div className="flex gap-2 flex-wrap">
                                 <button

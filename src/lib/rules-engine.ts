@@ -178,7 +178,7 @@ export function validateVacationRequest(
     };
   }
 
-  /** Congés acceptés du compte démo : exclus des calculs d’effectif / places (mais la démo suit le reste des règles comme tout le monde) */
+  /** Congés du compte démo : exclus des calculs d’effectif / places pour les autres éducatrices */
   const poolExcludingDemoAccepts = vacationRequests.filter(
     (r) => !isDemoEducatorId(r.educatorId)
   );
