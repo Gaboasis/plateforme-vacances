@@ -38,7 +38,9 @@ export function RequestMetaDates({ req }: { req: VacationRequest }) {
               ? "Premier refus / décision initiale le :"
               : req.status === "accepted"
                 ? "Acceptée le :"
-                : "Refusée le :"}
+                : req.status === "cancelled" && !req.rejectionReason
+                  ? "Acceptée le :"
+                  : "Refusée le :"}
           </span>{" "}
           {firstDecision}
         </li>
