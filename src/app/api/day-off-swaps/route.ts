@@ -6,6 +6,10 @@ import {
   getEducators,
   getPendingSwapByRequester,
 } from "@/lib/store";
+import {
+  isKamarSecretaryForSwap,
+  LOUBABA_EDUCATOR_ID,
+} from "@/lib/kamar-loubaba-swap";
 
 function validIsoDay(n: number) {
   return Number.isInteger(n) && n >= 1 && n <= 7;
@@ -62,14 +66,36 @@ export async function POST(request: NextRequest) {
 
     const educators = await getEducators();
     const me = educators.find((e) => e.id === educatorId);
-    if (!me || me.role !== "educatrice") {
+    const kamarSecretary = me != null && isKamarSecretaryForSwap(me);
+    if (!me || (me.role !== "educatrice" && !kamarSecretary)) {
       return NextResponse.json(
-        { error: "Réservé aux éducatrices." },
+        { error: "Échange de journée : réservé aux éducatrices." },
         { status: 403 }
       );
     }
 
-    const requesterQualified = me.isQualified === true;
+    if (kamarSecretary) {
+      if (mode !== "targeted") {
+        return NextResponse.json(
+          {
+            error:
+              "En tant que secrétaire, vous ne pouvez envoyer qu’une demande directe à Loubaba.",
+          },
+          { status: 400 }
+        );
+      }
+      if (targetEducatorId !== LOUBABA_EDUCATOR_ID) {
+        return NextResponse.json(
+          {
+            error:
+              "Votre demande d’échange ne peut être adressée qu’à Loubaba.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const requesterQualified = kamarSecretary ? false : me.isQualified === true;
 
     const pending = await getPendingSwapByRequester(educatorId);
     if (pending) {

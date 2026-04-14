@@ -25,6 +25,11 @@ import {
   canEmployeeSelfCancelAcceptedNow,
   getEmployeeSelfCancelLastMoment,
 } from "@/lib/vacation-self-cancel";
+import {
+  canAccessDayOffSwapDashboard,
+  isKamarSecretaryForSwap,
+  LOUBABA_EDUCATOR_ID,
+} from "@/lib/kamar-loubaba-swap";
 
 function UrgentAppealForm({
   requestId,
@@ -158,7 +163,7 @@ export default function DashboardPage() {
   const [educatorsForSwap, setEducatorsForSwap] = useState<Educator[]>([]);
 
   const loadSwaps = (educatorId: string, role: string) => {
-    if (role !== "educatrice") {
+    if (!canAccessDayOffSwapDashboard({ id: educatorId, role })) {
       setSwapBundle(null);
       return;
     }
@@ -210,7 +215,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!user || user.role !== "educatrice") return;
+    if (!user || !canAccessDayOffSwapDashboard(user)) return;
     const intervalId = window.setInterval(() => {
       loadSwaps(user.id, user.role);
     }, 40000);
@@ -365,6 +370,7 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
+  const kamarSwap = isKamarSecretaryForSwap(user);
   const requesterIsQualified = user.isQualified === true;
   const colleagueChoices = educatorsForSwap.filter((e) => {
     if (e.role !== "educatrice" || e.id === user.id) return false;
@@ -374,10 +380,16 @@ export default function DashboardPage() {
 
   const handleSwapSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || user.role !== "educatrice") return;
+    if (!user || (!kamarSwap && user.role !== "educatrice")) return;
     setSwapError("");
     setSwapSuccess("");
-    if (swapForm.mode === "targeted" && !swapForm.targetEducatorId) {
+    const mode = kamarSwap ? "targeted" : swapForm.mode;
+    const targetEducatorId = kamarSwap
+      ? LOUBABA_EDUCATOR_ID
+      : swapForm.mode === "targeted"
+        ? swapForm.targetEducatorId
+        : undefined;
+    if (mode === "targeted" && !targetEducatorId) {
       setSwapError("Choisissez la collègue concernée.");
       return;
     }
@@ -390,9 +402,8 @@ export default function DashboardPage() {
           educatorId: user.id,
           educatorName: user.name,
           requesterOffDay: swapForm.requesterOffDay,
-          mode: swapForm.mode,
-          targetEducatorId:
-            swapForm.mode === "targeted" ? swapForm.targetEducatorId : undefined,
+          mode,
+          targetEducatorId,
           message: swapForm.message.trim() || undefined,
         }),
       });
@@ -402,17 +413,19 @@ export default function DashboardPage() {
         return;
       }
       setSwapSuccess(
-        swapForm.mode === "open"
-          ? requesterIsQualified
-            ? "Votre demande a été envoyée aux seules éducatrices qualifiées. La première qui accepte confirmera l’échange."
-            : "Votre demande a été envoyée à toutes les collègues éducatrices. La première qui accepte confirmera l’échange."
-          : "Votre collègue a été notifiée. Dès qu’elle acceptera, l’échange sera confirmé."
+        kamarSwap
+          ? "Votre demande a été envoyée à Loubaba. Dès qu’elle acceptera, l’échange sera confirmé."
+          : swapForm.mode === "open"
+            ? requesterIsQualified
+              ? "Votre demande a été envoyée aux seules éducatrices qualifiées. La première qui accepte confirmera l’échange."
+              : "Votre demande a été envoyée à toutes les collègues éducatrices. La première qui accepte confirmera l’échange."
+            : "Votre collègue a été notifiée. Dès qu’elle acceptera, l’échange sera confirmé."
       );
       setShowSwapForm(false);
       setSwapForm({
-        mode: "open",
+        mode: kamarSwap ? "targeted" : "open",
         requesterOffDay: 1,
-        targetEducatorId: "",
+        targetEducatorId: kamarSwap ? LOUBABA_EDUCATOR_ID : "",
         message: "",
       });
       loadSwaps(user.id, user.role);
@@ -456,7 +469,7 @@ export default function DashboardPage() {
   };
 
   const handleCancelSwap = async (swapId: string) => {
-    if (!user || user.role !== "educatrice") return;
+    if (!user || !canAccessDayOffSwapDashboard(user)) return;
     try {
       const res = await fetch(`/api/day-off-swaps/${swapId}`, {
         method: "PATCH",
@@ -614,12 +627,12 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {user.role === "educatrice" && swapError && (
+      {canAccessDayOffSwapDashboard(user) && swapError && (
         <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">
           {swapError}
         </p>
       )}
-      {user.role === "educatrice" && swapSuccess && (
+      {canAccessDayOffSwapDashboard(user) && swapSuccess && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
           ✓ {swapSuccess}
         </div>
@@ -663,7 +676,7 @@ export default function DashboardPage() {
             <Stethoscope className="h-5 w-5 shrink-0" />
             Maladie
           </button>
-          {user.role === "educatrice" ? (
+          {user.role === "educatrice" || kamarSwap ? (
             <button
               type="button"
               onClick={() => {
@@ -673,9 +686,9 @@ export default function DashboardPage() {
                 setSwapError("");
                 setSwapSuccess("");
                 setSwapForm({
-                  mode: "open",
+                  mode: kamarSwap ? "targeted" : "open",
                   requesterOffDay: 1,
-                  targetEducatorId: "",
+                  targetEducatorId: kamarSwap ? LOUBABA_EDUCATOR_ID : "",
                   message: "",
                 });
               }}
@@ -688,13 +701,21 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      {showSwapForm && user.role === "educatrice" ? (
+      {showSwapForm && canAccessDayOffSwapDashboard(user) ? (
         <div className="card rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 p-4 sm:p-6 w-full max-w-full overflow-hidden">
           <h2 className="font-display text-base sm:text-lg font-semibold text-indigo-950 mb-1">
             Demande d’échange de journée de congé
           </h2>
           <p className="mb-4 text-sm text-indigo-900/85">
-            {requesterIsQualified ? (
+            {kamarSwap ? (
+              <>
+                En tant que <strong>secrétaire</strong>, vous pouvez envoyer une
+                demande d’échange <strong>uniquement à Loubaba</strong>, qui vous
+                remplace au besoin au bureau. Loubaba recevra la demande comme une
+                demande directe. L’administration est prévenue lorsque l’échange
+                est confirmé.
+              </>
+            ) : requesterIsQualified ? (
               <>
                 En tant qu’éducatrice <strong>qualifiée</strong>, vos demandes
                 (ouverte ou directe) ne concernent que les collègues{" "}
@@ -708,52 +729,61 @@ export default function DashboardPage() {
                 (qualifiée ou non). Une demande ouverte est visible par toutes.
               </>
             )}{" "}
-            L’administration est prévenue lorsque l’échange est confirmé.
+            {!kamarSwap ? (
+              <>L’administration est prévenue lorsque l’échange est confirmé.</>
+            ) : null}
           </p>
           <form onSubmit={handleSwapSubmit} className="space-y-4">
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium text-slate-800 mb-2">
-                Type de demande
-              </legend>
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3">
-                <input
-                  type="radio"
-                  name="swapMode"
-                  className="mt-1"
-                  checked={swapForm.mode === "open"}
-                  onChange={() =>
-                    setSwapForm((f) => ({
-                      ...f,
-                      mode: "open",
-                      targetEducatorId: "",
-                    }))
-                  }
-                />
-                <span className="text-sm text-slate-700">
-                  <strong>Toutes les collègues</strong> —{" "}
-                  {requesterIsQualified
-                    ? "votre demande n’est visible que par les éducatrices qualifiées ; la première qui accepte confirme l’échange."
-                    : "votre demande est visible par toutes les éducatrices ; la première qui accepte confirme l’échange."}
-                </span>
-              </label>
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3">
-                <input
-                  type="radio"
-                  name="swapMode"
-                  className="mt-1"
-                  checked={swapForm.mode === "targeted"}
-                  onChange={() =>
-                    setSwapForm((f) => ({ ...f, mode: "targeted" }))
-                  }
-                />
-                <span className="text-sm text-slate-700">
-                  <strong>Une collègue précise</strong> — à utiliser si vous
-                  avez déjà convenu verbalement de l’échange avec elle.
-                </span>
-              </label>
-            </fieldset>
+            {!kamarSwap ? (
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-slate-800 mb-2">
+                  Type de demande
+                </legend>
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3">
+                  <input
+                    type="radio"
+                    name="swapMode"
+                    className="mt-1"
+                    checked={swapForm.mode === "open"}
+                    onChange={() =>
+                      setSwapForm((f) => ({
+                        ...f,
+                        mode: "open",
+                        targetEducatorId: "",
+                      }))
+                    }
+                  />
+                  <span className="text-sm text-slate-700">
+                    <strong>Toutes les collègues</strong> —{" "}
+                    {requesterIsQualified
+                      ? "votre demande n’est visible que par les éducatrices qualifiées ; la première qui accepte confirme l’échange."
+                      : "votre demande est visible par toutes les éducatrices ; la première qui accepte confirme l’échange."}
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3">
+                  <input
+                    type="radio"
+                    name="swapMode"
+                    className="mt-1"
+                    checked={swapForm.mode === "targeted"}
+                    onChange={() =>
+                      setSwapForm((f) => ({ ...f, mode: "targeted" }))
+                    }
+                  />
+                  <span className="text-sm text-slate-700">
+                    <strong>Une collègue précise</strong> — à utiliser si vous
+                    avez déjà convenu verbalement de l’échange avec elle.
+                  </span>
+                </label>
+              </fieldset>
+            ) : null}
 
-            {swapForm.mode === "targeted" ? (
+            {kamarSwap ? (
+              <div className="rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-sm text-slate-800">
+                <span className="font-medium text-slate-700">Destinataire :</span>{" "}
+                Loubaba (demande directe uniquement)
+              </div>
+            ) : swapForm.mode === "targeted" ? (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Collègue
@@ -1075,7 +1105,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {user.role === "educatrice" && swapBundle && (swapBundle.outgoing.length > 0 ||
+      {canAccessDayOffSwapDashboard(user) && swapBundle && (swapBundle.outgoing.length > 0 ||
         swapBundle.history.length > 0) && (
         <div className="space-y-4">
           <h2 className="font-display text-base sm:text-lg font-semibold text-slate-800 flex items-center gap-2">

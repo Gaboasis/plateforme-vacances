@@ -10,6 +10,7 @@ import {
 } from "@/lib/store";
 import { getClientIp, getUserAgent } from "@/lib/audit-context";
 import { isoWeekdayLabel } from "@/lib/weekday-fr";
+import { isKamarSecretaryForSwap } from "@/lib/kamar-loubaba-swap";
 
 function validIsoDay(n: number) {
   return Number.isInteger(n) && n >= 1 && n <= 7;
@@ -30,7 +31,9 @@ export async function PATCH(
 
     const educators = await getEducators();
     const me = educators.find((e) => e.id === educatorId);
-    if (!me || me.role !== "educatrice") {
+    const secretaryMayCancel =
+      me != null && isKamarSecretaryForSwap(me) && action === "cancel";
+    if (!me || (me.role !== "educatrice" && !secretaryMayCancel)) {
       return NextResponse.json(
         { error: "Réservé aux éducatrices." },
         { status: 403 }
