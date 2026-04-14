@@ -46,6 +46,9 @@ export default function AdminPage() {
   const [rules, setRules] = useState<VacationRules | null>(null);
   const [educatorsList, setEducatorsList] = useState<Educator[]>([]);
   const [loading, setLoading] = useState(true);
+  const [requestsLoadError, setRequestsLoadError] = useState<string | null>(
+    null
+  );
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
   const router = useRouter();
@@ -81,14 +84,26 @@ export default function AdminPage() {
           fetch("/api/audit-logs?loginOnly=1&limit=500"),
           fetch("/api/day-off-swaps?all=1"),
         ]);
-        const reqs = reqsRes.ok ? await reqsRes.json() : [];
+        let reqs: VacationRequest[] = [];
+        if (reqsRes.ok) {
+          const raw = await reqsRes.json();
+          reqs = Array.isArray(raw) ? raw : [];
+          setRequestsLoadError(null);
+        } else {
+          const errBody = await reqsRes.json().catch(() => ({}));
+          const msg =
+            typeof errBody?.error === "string"
+              ? errBody.error
+              : `Chargement des demandes impossible (erreur ${reqsRes.status}). Souvent : base non à jour (exécutez « npx prisma db push » sur le serveur) ou DATABASE_URL incorrect.`;
+          setRequestsLoadError(msg);
+        }
         const sick = sickRes.ok ? await sickRes.json() : [];
         const r = rulesRes.ok ? await rulesRes.json() : null;
         const edu = eduRes.ok ? await eduRes.json() : [];
         const audit = auditRes.ok ? await auditRes.json() : [];
         const logins = loginRes.ok ? await loginRes.json() : [];
         const swaps = swapRes.ok ? await swapRes.json() : [];
-        setRequests(Array.isArray(reqs) ? reqs : []);
+        setRequests(reqs);
         setSickReports(Array.isArray(sick) ? sick : []);
         setRules(
           r
@@ -108,6 +123,9 @@ export default function AdminPage() {
         setDayOffSwaps(Array.isArray(swaps) ? swaps : []);
       } catch {
         setRequests([]);
+        setRequestsLoadError(
+          "Erreur réseau ou serveur lors du chargement des demandes."
+        );
         setSickReports([]);
         setRules(null);
         setEducatorsList([]);
@@ -617,12 +635,22 @@ export default function AdminPage() {
 
       {activeTab === "requests" && (
         <div className="space-y-4">
-          {requests.length === 0 ? (
+          {requestsLoadError && (
+            <div
+              className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"
+              role="alert"
+            >
+              <p className="font-medium">Les demandes de congé n’ont pas pu être chargées</p>
+              <p className="mt-1 text-rose-800">{requestsLoadError}</p>
+            </div>
+          )}
+          {!requestsLoadError && requests.length === 0 && (
             <div className="card text-center py-16">
               <Calendar className="mx-auto h-14 w-14 text-slate-300" />
               <p className="mt-4 text-slate-600">Aucune demande pour le moment</p>
             </div>
-          ) : (
+          )}
+          {!requestsLoadError && requests.length > 0 && (
             <div className="space-y-6">
               {requestsByEducator.map((group) => {
                 const edu = educatorsList.find((e) => e.id === group.educatorId);
