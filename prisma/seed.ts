@@ -68,6 +68,84 @@ async function removeLegacyEducator12() {
   await prisma.educator.deleteMany({ where: { id: legacyId } });
 }
 
+/**
+ * Congés approuvés avant la plateforme : insérés au déploiement si absents
+ * (même effet que le script import-legacy-vacations, sans commande manuelle).
+ * Idempotent : educatorId + startDate + endDate déjà présents → skip.
+ */
+async function ensurePrePlatformVacations() {
+  const rows = [
+    {
+      educatorId: "2",
+      educatorName: "Rafika",
+      startDate: new Date("2026-06-25"),
+      endDate: new Date("2026-08-17"),
+      createdAt: new Date("2026-02-15T12:00:00.000Z"),
+      reviewedAt: new Date("2026-02-15T12:00:00.000Z"),
+      reason: "Congé approuvé avant la plateforme (acceptation 15 févr. 2026)",
+    },
+    {
+      educatorId: "3",
+      educatorName: "Saliha",
+      startDate: new Date("2026-07-02"),
+      endDate: new Date("2026-07-31"),
+      createdAt: new Date("2026-03-15T12:00:00.000Z"),
+      reviewedAt: new Date("2026-03-15T12:00:00.000Z"),
+      reason: "Congé approuvé avant la plateforme (acceptation 15 mars 2026)",
+    },
+    {
+      educatorId: "5",
+      educatorName: "Souhir",
+      startDate: new Date("2026-08-03"),
+      endDate: new Date("2026-08-14"),
+      createdAt: new Date("2026-03-01T12:00:00.000Z"),
+      reviewedAt: new Date("2026-03-01T12:00:00.000Z"),
+      reason: "Congé approuvé avant la plateforme (acceptation 1er mars 2026)",
+    },
+    {
+      educatorId: "amineh",
+      educatorName: "Amineh",
+      startDate: new Date("2026-08-01"),
+      endDate: new Date("2026-09-01"),
+      createdAt: new Date("2026-02-15T12:00:00.000Z"),
+      reviewedAt: new Date("2026-02-15T12:00:00.000Z"),
+      reason: "Congé approuvé avant la plateforme (acceptation 15 févr. 2026)",
+    },
+  ];
+
+  let inserted = 0;
+  for (const row of rows) {
+    const already = await prisma.vacationRequest.findFirst({
+      where: {
+        educatorId: row.educatorId,
+        startDate: row.startDate,
+        endDate: row.endDate,
+      },
+    });
+    if (already) continue;
+
+    await prisma.vacationRequest.create({
+      data: {
+        educatorId: row.educatorId,
+        educatorName: row.educatorName,
+        startDate: row.startDate,
+        endDate: row.endDate,
+        reason: row.reason,
+        status: "accepted",
+        legacyImport: true,
+        createdAt: row.createdAt,
+        reviewedAt: row.reviewedAt,
+      },
+    });
+    inserted += 1;
+  }
+  if (inserted > 0) {
+    console.log(`Congés pré-plateforme : ${inserted} ligne(s) ajoutée(s)`);
+  } else {
+    console.log("Congés pré-plateforme : déjà présents (aucun ajout)");
+  }
+}
+
 async function main() {
   await removeLegacyEducator12();
 
@@ -107,6 +185,8 @@ async function main() {
   } else {
     console.log("Règles existantes conservées (non modifiées)");
   }
+
+  await ensurePrePlatformVacations();
 
   console.log("Seed terminé ✓");
 }
