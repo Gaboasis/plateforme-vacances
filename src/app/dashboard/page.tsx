@@ -1283,6 +1283,16 @@ export default function DashboardPage() {
                         Motif : {req.rejectionReason}
                       </p>
                     )}
+                    {req.status === "cancelled" && req.adminCancellationReason && (
+                      <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+                        <p className="font-medium text-sky-900">
+                          Message de l&apos;administration (annulation)
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap">
+                          {req.adminCancellationReason}
+                        </p>
+                      </div>
+                    )}
                     <RequestMetaDates req={req} />
                     {req.status === "rejected" && !req.urgentAppealReason && user && (
                       <div className="mt-2">

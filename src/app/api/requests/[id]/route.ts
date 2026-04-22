@@ -22,6 +22,7 @@ export async function PATCH(
       urgentAppealReason,
       educatorId,
       clearCancellationPending,
+      adminCancellationReason,
     } = body;
 
     const existing = await getVacationRequestById(id);
@@ -74,6 +75,24 @@ export async function PATCH(
       status: status ?? existing.status,
       rejectionReason: rejectionReason ?? existing.rejectionReason,
     };
+
+    if (status === "cancelled" && existing.status === "accepted") {
+      const msg =
+        typeof adminCancellationReason === "string"
+          ? adminCancellationReason.trim()
+          : "";
+      if (!msg) {
+        return NextResponse.json(
+          {
+            error:
+              "Indiquez un message pour l’employé expliquant l’annulation du congé.",
+          },
+          { status: 400 }
+        );
+      }
+      updates.adminCancellationReason = msg;
+    }
+
     // Si l'admin accepte ou refuse un appel, marquer comme traité
     if (status === "accepted" || status === "rejected") {
       if (existing.urgentAppealReason && !existing.appealReviewedAt) {
@@ -83,6 +102,10 @@ export async function PATCH(
     const updated = await updateVacationRequest(id, updates);
     if (status === "cancelled" && existing.status === "accepted") {
       try {
+        const msg =
+          typeof adminCancellationReason === "string"
+            ? adminCancellationReason.trim()
+            : "";
         await createAuditLog({
           educatorId: existing.educatorId,
           educatorName: existing.educatorName,
@@ -93,6 +116,7 @@ export async function PATCH(
             startDate: existing.startDate,
             endDate: existing.endDate,
             hadPendingRequest: Boolean(existing.cancellationPendingAt),
+            messagePreview: msg.slice(0, 240),
           }),
           ip: getClientIp(request),
           userAgent: getUserAgent(request),

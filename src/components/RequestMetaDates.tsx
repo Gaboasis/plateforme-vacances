@@ -77,6 +77,14 @@ export function RequestMetaDates({ req }: { req: VacationRequest }) {
           {formatFrDateTime(req.cancelledAt)}
         </li>
       )}
+      {req.status === "cancelled" && req.adminCancellationReason && (
+        <li className="text-sky-900">
+          <span className="font-medium text-slate-700">
+            Message de l&apos;administration :
+          </span>{" "}
+          <span className="whitespace-pre-wrap">{req.adminCancellationReason}</span>
+        </li>
+      )}
       {req.status === "accepted" && req.cancellationPendingAt && (
         <li className="text-amber-800">
           <span className="font-medium">Annulation :</span> demande envoyée à

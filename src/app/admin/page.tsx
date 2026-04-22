@@ -70,6 +70,11 @@ export default function AdminPage() {
   const [newBlackoutDate, setNewBlackoutDate] = useState("");
   const [passwordEditFor, setPasswordEditFor] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  const [cancelVacationModal, setCancelVacationModal] = useState<{
+    id: string;
+    educatorName: string;
+  } | null>(null);
+  const [cancelVacationMessage, setCancelVacationMessage] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -224,6 +229,35 @@ export default function AdminPage() {
     if (updated) {
       setRequests((prev) =>
         prev.map((r) => (r.id === id ? updated : r))
+      );
+    }
+  };
+
+  const submitAdminCancelVacation = async () => {
+    if (!cancelVacationModal) return;
+    const msg = cancelVacationMessage.trim();
+    if (!msg) {
+      alert("Saisissez un message pour l’employé·e.");
+      return;
+    }
+    const res = await fetch(`/api/requests/${cancelVacationModal.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "cancelled",
+        adminCancellationReason: msg,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setRequests((prev) =>
+        prev.map((r) => (r.id === cancelVacationModal.id ? data : r))
+      );
+      setCancelVacationModal(null);
+      setCancelVacationMessage("");
+    } else {
+      alert(
+        typeof data.error === "string" ? data.error : "Annulation impossible."
       );
     }
   };
@@ -516,6 +550,7 @@ export default function AdminPage() {
   })();
 
   return (
+    <>
     <div className="space-y-6 sm:space-y-8">
       <div>
         <h1 className="font-display text-xl sm:text-2xl font-bold text-slate-800">
@@ -714,6 +749,17 @@ export default function AdminPage() {
                               </div>
                             )}
                             <RequestMetaDates req={req} />
+                            {req.status === "cancelled" &&
+                              req.adminCancellationReason && (
+                                <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+                                  <p className="text-xs font-medium uppercase tracking-wide text-sky-800">
+                                    Message envoyé à l&apos;employé·e
+                                  </p>
+                                  <p className="mt-1 whitespace-pre-wrap">
+                                    {req.adminCancellationReason}
+                                  </p>
+                                </div>
+                              )}
                           </div>
                           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-2 shrink-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -731,9 +777,13 @@ export default function AdminPage() {
                               <div className="flex gap-2 flex-wrap">
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    handleUpdateRequestStatus(req.id, "cancelled")
-                                  }
+                                  onClick={() => {
+                                    setCancelVacationMessage("");
+                                    setCancelVacationModal({
+                                      id: req.id,
+                                      educatorName: req.educatorName,
+                                    });
+                                  }}
                                   className="rounded-lg bg-slate-800 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-white hover:bg-slate-900 touch-manipulation min-h-[44px] sm:min-h-0"
                                 >
                                   Approuver l&apos;annulation
@@ -752,9 +802,13 @@ export default function AdminPage() {
                             {req.status === "accepted" && !req.cancellationPendingAt && (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleUpdateRequestStatus(req.id, "cancelled")
-                                }
+                                onClick={() => {
+                                  setCancelVacationMessage("");
+                                  setCancelVacationModal({
+                                    id: req.id,
+                                    educatorName: req.educatorName,
+                                  });
+                                }}
                                 className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 sm:py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 touch-manipulation min-h-[44px] sm:min-h-0"
                               >
                                 Annuler ce congé (admin)
@@ -1790,5 +1844,61 @@ export default function AdminPage() {
         </div>
       )}
     </div>
+
+    {cancelVacationModal && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cancel-vacation-title"
+      >
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+          <h3
+            id="cancel-vacation-title"
+            className="font-display text-lg font-semibold text-slate-800"
+          >
+            Annuler le congé accepté
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            {cancelVacationModal.educatorName} — ce message sera visible sur son
+            tableau de bord.
+          </p>
+          <label
+            htmlFor="admin-cancel-msg"
+            className="mt-4 block text-sm font-medium text-slate-700"
+          >
+            Message pour l&apos;employé·e (obligatoire)
+          </label>
+          <textarea
+            id="admin-cancel-msg"
+            value={cancelVacationMessage}
+            onChange={(e) => setCancelVacationMessage(e.target.value)}
+            className="input-field mt-1 min-h-[100px] resize-y"
+            rows={4}
+            placeholder="Ex. : Planning révisé, besoin d’effectif sur ces dates…"
+          />
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                setCancelVacationModal(null);
+                setCancelVacationMessage("");
+              }}
+            >
+              Fermer
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900"
+              onClick={() => void submitAdminCancelVacation()}
+            >
+              Confirmer l&apos;annulation
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

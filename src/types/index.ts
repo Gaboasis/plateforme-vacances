@@ -28,6 +28,8 @@ export interface VacationRequest {
   rejectionReason?: string;
   /** Annulation par l’employé ou l’admin */
   cancelledAt?: string;
+  /** Message de l’administration lors de l’annulation d’un congé déjà accepté (visible par l’employé) */
+  adminCancellationReason?: string;
   /** Demande d’annulation après délai — traitement admin */
   cancellationPendingAt?: string;
   /** Raison d'urgence motivée soumise par l'éducatrice */
