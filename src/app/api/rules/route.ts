@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getVacationRules, setVacationRules } from "@/lib/store";
+import { getEducators, getVacationRules, setVacationRules } from "@/lib/store";
+import { isFullAdmin } from "@/lib/staff-actor";
+import type { VacationRules } from "@/types";
 
 export async function GET() {
   try {
@@ -12,7 +14,19 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json() as Record<string, unknown> & {
+      _actorEducatorId?: string;
+    };
+    const actorId =
+      typeof body._actorEducatorId === "string"
+        ? body._actorEducatorId.trim()
+        : "";
+    delete body._actorEducatorId;
+    const educators = await getEducators();
+    const actor = educators.find((e) => e.id === actorId);
+    if (!actor || !isFullAdmin(actor)) {
+      return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+    }
 
     if (Array.isArray(body.biWeekRules)) {
       const arr = body.biWeekRules.slice(0, 52);
@@ -22,7 +36,7 @@ export async function PUT(request: NextRequest) {
       body.biWeekRules = Array(52).fill(null);
     }
 
-    const rules = await setVacationRules(body);
+    const rules = await setVacationRules(body as Partial<VacationRules>);
     return NextResponse.json(rules);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur serveur";

@@ -8,6 +8,7 @@ import {
   createAuditLog,
 } from "@/lib/store";
 import { getClientIp, getUserAgent } from "@/lib/audit-context";
+import { findStaffInboxActor, isFullAdmin } from "@/lib/staff-actor";
 
 export async function PATCH(
   request: NextRequest,
@@ -23,22 +24,14 @@ export async function PATCH(
       educatorId,
       clearCancellationPending,
       adminCancellationReason,
+      actorEducatorId: actorEducatorIdRaw,
     } = body;
+    const actorEducatorId =
+      typeof actorEducatorIdRaw === "string" ? actorEducatorIdRaw.trim() : "";
 
     const existing = await getVacationRequestById(id);
     if (!existing) {
       return NextResponse.json({ error: "Demande introuvable" }, { status: 404 });
-    }
-
-    if (clearCancellationPending === true) {
-      if (!existing.cancellationPendingAt) {
-        return NextResponse.json(
-          { error: "Aucune demande d’annulation en attente." },
-          { status: 400 }
-        );
-      }
-      const updated = await updateVacationRequest(id, { cancellationPendingAt: null });
-      return NextResponse.json(updated);
     }
 
     // Soumission d'une urgence motivée par l'éducatrice
@@ -70,7 +63,24 @@ export async function PATCH(
       return NextResponse.json(updated);
     }
 
-    // Mise à jour par l'admin (accepter/refuser/annuler congé accepté)
+    const educators = await getEducators();
+    const staffActor = findStaffInboxActor(educators, actorEducatorId);
+    if (!staffActor) {
+      return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+    }
+
+    if (clearCancellationPending === true) {
+      if (!existing.cancellationPendingAt) {
+        return NextResponse.json(
+          { error: "Aucune demande d’annulation en attente." },
+          { status: 400 }
+        );
+      }
+      const updated = await updateVacationRequest(id, { cancellationPendingAt: null });
+      return NextResponse.json(updated);
+    }
+
+    // Mise à jour par l’admin ou la secrétaire (accepter/refuser/annuler congé accepté)
     const updates: Parameters<typeof updateVacationRequest>[1] = {
       status: status ?? existing.status,
       rejectionReason: rejectionReason ?? existing.rejectionReason,
@@ -149,8 +159,8 @@ export async function DELETE(
       );
     }
     const educators = await getEducators();
-    const adminUser = educators.find((e) => e.id === adminId && e.role === "admin");
-    if (!adminUser) {
+    const adminUser = educators.find((e) => e.id === adminId);
+    if (!adminUser || !isFullAdmin(adminUser)) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
     }
     const existing = await getVacationRequestById(id);

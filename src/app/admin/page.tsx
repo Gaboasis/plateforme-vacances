@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
@@ -52,6 +52,8 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
   const router = useRouter();
+  const pathname = usePathname();
+  const inboxOnly = Boolean(pathname?.includes("/bureau-demandes"));
   const [saveError, setSaveError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<
     | "requests"
@@ -79,6 +81,35 @@ export default function AdminPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        if (inboxOnly) {
+          const [reqsRes, sickRes, swapRes] = await Promise.all([
+            fetch("/api/requests"),
+            fetch("/api/sick-leaves"),
+            fetch("/api/day-off-swaps?all=1"),
+          ]);
+          let reqs: VacationRequest[] = [];
+          if (reqsRes.ok) {
+            const raw = await reqsRes.json();
+            reqs = Array.isArray(raw) ? raw : [];
+            setRequestsLoadError(null);
+          } else {
+            const errBody = await reqsRes.json().catch(() => ({}));
+            const msg =
+              typeof errBody?.error === "string"
+                ? errBody.error
+                : `Chargement des demandes impossible (erreur ${reqsRes.status}). Souvent : base non à jour (exécutez « npx prisma db push » sur le serveur) ou DATABASE_URL incorrect.`;
+            setRequestsLoadError(msg);
+          }
+          const sick = sickRes.ok ? await sickRes.json() : [];
+          const swaps = swapRes.ok ? await swapRes.json() : [];
+          setRequests(reqs);
+          setSickReports(Array.isArray(sick) ? sick : []);
+          setRules(null);
+          setEducatorsList([]);
+          setAuditLogs([]);
+          setLoginLogs([]);
+          setDayOffSwaps(Array.isArray(swaps) ? swaps : []);
+        } else {
         const [reqsRes, sickRes, rulesRes, eduRes, auditRes, loginRes, swapRes] =
           await Promise.all([
           fetch("/api/requests"),
@@ -126,6 +157,7 @@ export default function AdminPage() {
         setAuditLogs(Array.isArray(audit) ? audit : []);
         setLoginLogs(Array.isArray(logins) ? logins : []);
         setDayOffSwaps(Array.isArray(swaps) ? swaps : []);
+        }
       } catch {
         setRequests([]);
         setRequestsLoadError(
@@ -142,7 +174,31 @@ export default function AdminPage() {
       }
     };
     fetchData();
-  }, []);
+  }, [inboxOnly, pathname]);
+
+  useEffect(() => {
+    if (!inboxOnly) return;
+    if (
+      activeTab === "audit" ||
+      activeTab === "logins" ||
+      activeTab === "rules" ||
+      activeTab === "educators"
+    ) {
+      setActiveTab("requests");
+    }
+  }, [inboxOnly, activeTab]);
+
+  const getStaffActorId = (): string | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const u = JSON.parse(
+        sessionStorage.getItem("user") || "{}"
+      ) as { id?: string };
+      return typeof u.id === "string" ? u.id : null;
+    } catch {
+      return null;
+    }
+  };
 
   const handleSaveRules = async () => {
     if (!rules) return;
@@ -150,6 +206,13 @@ export default function AdminPage() {
     setSaveStatus("idle");
     setSaveError("");
     try {
+      const actor = getStaffActorId();
+      if (!actor) {
+        setSaving(false);
+        setSaveStatus("error");
+        setSaveError("Session introuvable.");
+        return;
+      }
       const payload = {
         ...rules,
         blackoutDates: rules.blackoutDates ?? [],
@@ -165,7 +228,7 @@ export default function AdminPage() {
       const res = await fetch("/api/rules", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, _actorEducatorId: actor }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -189,10 +252,15 @@ export default function AdminPage() {
     status: VacationRequest["status"],
     rejectionReason?: string
   ) => {
+    const actor = getStaffActorId();
+    if (!actor) {
+      alert("Session introuvable. Reconnectez-vous.");
+      return;
+    }
     const res = await fetch(`/api/requests/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, rejectionReason }),
+      body: JSON.stringify({ status, rejectionReason, actorEducatorId: actor }),
     });
     const updated = res.ok ? await res.json() : null;
     if (updated) {
@@ -220,10 +288,18 @@ export default function AdminPage() {
   };
 
   const handleRejectCancellationPending = async (id: string) => {
+    const actor = getStaffActorId();
+    if (!actor) {
+      alert("Session introuvable. Reconnectez-vous.");
+      return;
+    }
     const res = await fetch(`/api/requests/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clearCancellationPending: true }),
+      body: JSON.stringify({
+        clearCancellationPending: true,
+        actorEducatorId: actor,
+      }),
     });
     const updated = res.ok ? await res.json() : null;
     if (updated) {
@@ -240,12 +316,18 @@ export default function AdminPage() {
       alert("Saisissez un message pour l’employé·e.");
       return;
     }
+    const actor = getStaffActorId();
+    if (!actor) {
+      alert("Session introuvable. Reconnectez-vous.");
+      return;
+    }
     const res = await fetch(`/api/requests/${cancelVacationModal.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         status: "cancelled",
         adminCancellationReason: msg,
+        actorEducatorId: actor,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -554,10 +636,12 @@ export default function AdminPage() {
     <div className="space-y-6 sm:space-y-8">
       <div>
         <h1 className="font-display text-xl sm:text-2xl font-bold text-slate-800">
-          Administration
+          {inboxOnly ? "Bureau des demandes" : "Administration"}
         </h1>
         <p className="mt-1 text-sm sm:text-base text-slate-500">
-          Gérez les demandes de congés et configurez les règles
+          {inboxOnly
+            ? "Traitez les demandes de congés, maladie et échanges de jour."
+            : "Gérez les demandes de congés et configurez les règles"}
         </p>
       </div>
 
@@ -622,6 +706,7 @@ export default function AdminPage() {
           <ArrowLeftRight className="h-4 w-4" />
           Échanges jour ({dayOffSwaps.length})
         </button>
+        {!inboxOnly && (
         <button
           onClick={() => setActiveTab("audit")}
           className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
@@ -633,6 +718,8 @@ export default function AdminPage() {
           <ScrollText className="h-4 w-4" />
           Traçabilité
         </button>
+        )}
+        {!inboxOnly && (
         <button
           onClick={() => setActiveTab("logins")}
           className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
@@ -644,6 +731,8 @@ export default function AdminPage() {
           <LogIn className="h-4 w-4" />
           Connexions ({loginLogs.length})
         </button>
+        )}
+        {!inboxOnly && (
         <button
           onClick={() => setActiveTab("rules")}
           className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
@@ -655,6 +744,8 @@ export default function AdminPage() {
           <Settings className="h-4 w-4" />
           Règles
         </button>
+        )}
+        {!inboxOnly && (
         <button
           onClick={() => setActiveTab("educators")}
           className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
@@ -666,6 +757,7 @@ export default function AdminPage() {
           <Users className="h-4 w-4" />
           Éducatrices
         </button>
+        )}
       </div>
 
       {activeTab === "requests" && (
@@ -841,6 +933,7 @@ export default function AdminPage() {
                                 </button>
                               </div>
                             )}
+                            {!inboxOnly && (
                             <button
                               type="button"
                               onClick={() => handleDeleteVacationPermanently(req.id)}
@@ -849,6 +942,7 @@ export default function AdminPage() {
                               <Trash2 className="h-4 w-4 shrink-0" />
                               Supprimer définitivement
                             </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -940,6 +1034,7 @@ export default function AdminPage() {
                               </span>
                             )}
                           </div>
+                          {!inboxOnly && (
                           <button
                             type="button"
                             onClick={() => handleDeleteSickReportPermanently(s.id)}
@@ -948,6 +1043,7 @@ export default function AdminPage() {
                             <Trash2 className="h-3.5 w-3.5 shrink-0" />
                             Supprimer définitivement
                           </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -982,7 +1078,11 @@ export default function AdminPage() {
                     <th className="px-3 py-3 sm:px-4">Mode</th>
                     <th className="px-3 py-3 sm:px-4">Statut</th>
                     <th className="px-3 py-3 sm:px-4">Échange</th>
-                    <th className="px-3 py-3 sm:px-4 w-32">Actions</th>
+                    <th
+                      className={`px-3 py-3 sm:px-4 w-32 ${inboxOnly ? "hidden" : ""}`}
+                    >
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1043,7 +1143,9 @@ export default function AdminPage() {
                           </span>
                         ) : null}
                       </td>
-                      <td className="px-3 py-3 sm:px-4 align-middle">
+                      <td
+                        className={`px-3 py-3 sm:px-4 align-middle ${inboxOnly ? "hidden" : ""}`}
+                      >
                         <button
                           type="button"
                           onClick={() =>
@@ -1347,12 +1449,15 @@ export default function AdminPage() {
                         onChange={async (e) => {
                           const val = e.target.value;
                           const rank = val ? parseInt(val, 10) : undefined;
+                          const actor = getStaffActorId();
+                          if (!actor) return;
                           const res = await fetch("/api/educators", {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                               id: edu.id,
                               seniorityRank: rank,
+                              _actorEducatorId: actor,
                             }),
                           });
                           if (res.ok) {
@@ -1381,12 +1486,15 @@ export default function AdminPage() {
                         checked={edu.isQualified ?? false}
                         onChange={async (e) => {
                           const val = e.target.checked;
+                          const actor = getStaffActorId();
+                          if (!actor) return;
                           const res = await fetch("/api/educators", {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                               id: edu.id,
                               isQualified: val,
+                              _actorEducatorId: actor,
                             }),
                           });
                           if (res.ok) {
@@ -1421,6 +1529,8 @@ export default function AdminPage() {
                           <button
                             onClick={async () => {
                               if (!newPassword.trim()) return;
+                              const actor = getStaffActorId();
+                              if (!actor) return;
                               const res = await fetch("/api/educators", {
                                 method: "PATCH",
                                 headers: {
@@ -1429,6 +1539,7 @@ export default function AdminPage() {
                                 body: JSON.stringify({
                                   id: edu.id,
                                   newPassword: newPassword.trim(),
+                                  _actorEducatorId: actor,
                                 }),
                               });
                               if (res.ok) {

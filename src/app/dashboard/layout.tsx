@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Calendar, LogOut, Home, ArrowLeft, Lock } from "lucide-react";
+import { Calendar, LogOut, Home, ArrowLeft, Lock, Inbox } from "lucide-react";
 import type { Educator } from "@/types";
+import { isSecretaryInboxStaff } from "@/lib/staff-actor";
 
 export default function DashboardLayout({
   children,
@@ -114,6 +115,16 @@ export default function DashboardLayout({
 
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <p className="hidden sm:block text-sm font-medium text-slate-800">{user.name}</p>
+            {isSecretaryInboxStaff(user) && (
+              <Link
+                href="/bureau-demandes"
+                className="flex items-center gap-1 rounded-lg p-2.5 sm:px-3 sm:py-2 text-slate-600 transition-colors hover:bg-primary-50 hover:text-primary-700 touch-manipulation"
+                title="Bureau des demandes"
+              >
+                <Inbox className="h-5 w-5" />
+                <span className="hidden lg:inline text-sm font-medium">Demandes</span>
+              </Link>
+            )}
             <button
               onClick={() => setShowPasswordModal(true)}
               className="rounded-lg p-2.5 sm:px-3 sm:py-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-700 touch-manipulation"
