@@ -46,6 +46,7 @@ function requestToType(req: {
   cancelledAt: Date | null;
   cancellationPendingAt: Date | null;
   adminCancellationReason: string | null;
+  adminAppealMessage: string | null;
 }): VacationRequest {
   return {
     id: req.id,
@@ -63,6 +64,7 @@ function requestToType(req: {
     reviewedAt: req.reviewedAt?.toISOString(),
     cancelledAt: req.cancelledAt?.toISOString(),
     adminCancellationReason: req.adminCancellationReason ?? undefined,
+    adminAppealMessage: req.adminAppealMessage ?? undefined,
     cancellationPendingAt: req.cancellationPendingAt?.toISOString(),
   };
 }
@@ -279,6 +281,11 @@ export async function updateVacationRequest(
   if ("adminCancellationReason" in updates) {
     const v = updates.adminCancellationReason;
     data.adminCancellationReason =
+      v == null || v === "" ? null : String(v).trim() || null;
+  }
+  if ("adminAppealMessage" in updates) {
+    const v = updates.adminAppealMessage;
+    data.adminAppealMessage =
       v == null || v === "" ? null : String(v).trim() || null;
   }
   if (updates.appealReviewedAt != null) data.appealReviewedAt = new Date(updates.appealReviewedAt);

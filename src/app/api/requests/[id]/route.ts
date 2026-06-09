@@ -25,6 +25,7 @@ export async function PATCH(
       educatorId,
       clearCancellationPending,
       adminCancellationReason,
+      adminAppealMessage,
       actorEducatorId: actorEducatorIdRaw,
     } = body;
     const actorEducatorId =
@@ -88,10 +89,38 @@ export async function PATCH(
     }
 
     // Mise à jour par l’admin ou la secrétaire (accepter/refuser/annuler congé accepté)
+    const isAppealPending =
+      Boolean(existing.urgentAppealReason) && !existing.appealReviewedAt;
+    const isAppealDecision =
+      isAppealPending &&
+      (status === "accepted" || status === "rejected");
+
+    if (isAppealDecision) {
+      const msg =
+        typeof adminAppealMessage === "string" ? adminAppealMessage.trim() : "";
+      if (!msg) {
+        return NextResponse.json(
+          {
+            error:
+              "Indiquez un message pour l’employé·e expliquant votre décision sur l’urgence motivée.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const updates: Parameters<typeof updateVacationRequest>[1] = {
       status: status ?? existing.status,
       rejectionReason: rejectionReason ?? existing.rejectionReason,
     };
+
+    if (isAppealDecision) {
+      updates.adminAppealMessage =
+        typeof adminAppealMessage === "string"
+          ? adminAppealMessage.trim()
+          : undefined;
+      updates.appealReviewedAt = new Date().toISOString();
+    }
 
     if (status === "cancelled" && existing.status === "accepted") {
       const msg =
@@ -110,12 +139,6 @@ export async function PATCH(
       updates.adminCancellationReason = msg;
     }
 
-    // Si l'admin accepte ou refuse un appel, marquer comme traité
-    if (status === "accepted" || status === "rejected") {
-      if (existing.urgentAppealReason && !existing.appealReviewedAt) {
-        updates.appealReviewedAt = new Date().toISOString();
-      }
-    }
     const updated = await updateVacationRequest(id, updates);
     if (status === "cancelled" && existing.status === "accepted") {
       try {

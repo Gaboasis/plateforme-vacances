@@ -36,6 +36,8 @@ export interface VacationRequest {
   urgentAppealReason?: string;
   /** Date de traitement de l'appel par l'admin */
   appealReviewedAt?: string;
+  /** Message de l’administration après traitement de l’urgence motivée (visible par l’employé) */
+  adminAppealMessage?: string;
 }
 
 /** Règles pour une semaine - index 0-51 = semaines 1-52, appliquées à chaque jour */

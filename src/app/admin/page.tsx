@@ -77,6 +77,12 @@ export default function AdminPage() {
     educatorName: string;
   } | null>(null);
   const [cancelVacationMessage, setCancelVacationMessage] = useState("");
+  const [appealReviewModal, setAppealReviewModal] = useState<{
+    id: string;
+    educatorName: string;
+    decision: "accepted" | "rejected";
+  } | null>(null);
+  const [appealReviewMessage, setAppealReviewMessage] = useState("");
   const [addEducatorForm, setAddEducatorForm] = useState({
     id: "",
     name: "",
@@ -350,6 +356,41 @@ export default function AdminPage() {
     } else {
       alert(
         typeof data.error === "string" ? data.error : "Annulation impossible."
+      );
+    }
+  };
+
+  const submitAppealReview = async () => {
+    if (!appealReviewModal) return;
+    const msg = appealReviewMessage.trim();
+    if (!msg) {
+      alert("Saisissez un message pour l’employé·e.");
+      return;
+    }
+    const actor = getStaffActorId();
+    if (!actor) {
+      alert("Session introuvable. Reconnectez-vous.");
+      return;
+    }
+    const res = await fetch(`/api/requests/${appealReviewModal.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: appealReviewModal.decision,
+        adminAppealMessage: msg,
+        actorEducatorId: actor,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setRequests((prev) =>
+        prev.map((r) => (r.id === appealReviewModal.id ? data : r))
+      );
+      setAppealReviewModal(null);
+      setAppealReviewMessage("");
+    } else {
+      alert(
+        typeof data.error === "string" ? data.error : "Décision impossible."
       );
     }
   };
@@ -972,6 +1013,23 @@ export default function AdminPage() {
                                 congé ; refuser = la demande reste acceptée.
                               </div>
                             )}
+                            {req.appealReviewedAt && req.adminAppealMessage && (
+                              <div
+                                className={`mt-3 rounded-lg border p-3 text-sm ${
+                                  req.status === "accepted"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                                    : "border-rose-200 bg-rose-50 text-rose-950"
+                                }`}
+                              >
+                                <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+                                  Message envoyé à l&apos;employé·e (urgence
+                                  motivée)
+                                </p>
+                                <p className="mt-1 whitespace-pre-wrap">
+                                  {req.adminAppealMessage}
+                                </p>
+                              </div>
+                            )}
                             <RequestMetaDates req={req} />
                             {req.status === "cancelled" &&
                               req.adminCancellationReason && (
@@ -1038,10 +1096,7 @@ export default function AdminPage() {
                                 Annuler ce congé (admin)
                               </button>
                             )}
-                            {(req.status === "pending" ||
-                              (req.status === "rejected" &&
-                                req.urgentAppealReason &&
-                                !req.appealReviewedAt)) && (
+                            {req.status === "pending" && (
                               <div className="flex gap-2 flex-wrap">
                                 <button
                                   onClick={() =>
@@ -1056,12 +1111,46 @@ export default function AdminPage() {
                                     handleUpdateRequestStatus(
                                       req.id,
                                       "rejected",
-                                      "Appel refusé"
+                                      "Refusé par l'administration"
                                     )
                                   }
                                   className="rounded-lg bg-rose-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-200 touch-manipulation min-h-[44px] sm:min-h-0"
                                 >
                                   Refuser
+                                </button>
+                              </div>
+                            )}
+                            {req.status === "rejected" &&
+                              req.urgentAppealReason &&
+                              !req.appealReviewedAt && (
+                              <div className="flex gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAppealReviewMessage("");
+                                    setAppealReviewModal({
+                                      id: req.id,
+                                      educatorName: req.educatorName,
+                                      decision: "accepted",
+                                    });
+                                  }}
+                                  className="rounded-lg bg-emerald-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-200 touch-manipulation min-h-[44px] sm:min-h-0"
+                                >
+                                  Accepter l&apos;urgence
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAppealReviewMessage("");
+                                    setAppealReviewModal({
+                                      id: req.id,
+                                      educatorName: req.educatorName,
+                                      decision: "rejected",
+                                    });
+                                  }}
+                                  className="rounded-lg bg-rose-100 px-4 py-2.5 sm:py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-200 touch-manipulation min-h-[44px] sm:min-h-0"
+                                >
+                                  Refuser l&apos;urgence
                                 </button>
                               </div>
                             )}
@@ -2231,6 +2320,73 @@ export default function AdminPage() {
         </div>
       )}
     </div>
+
+    {appealReviewModal && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="appeal-review-title"
+      >
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+          <h3
+            id="appeal-review-title"
+            className="font-display text-lg font-semibold text-slate-800"
+          >
+            {appealReviewModal.decision === "accepted"
+              ? "Accepter l’urgence motivée"
+              : "Refuser l’urgence motivée"}
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            {appealReviewModal.educatorName} — ce message sera visible sur son
+            tableau de bord avec votre décision.
+          </p>
+          <label
+            htmlFor="admin-appeal-msg"
+            className="mt-4 block text-sm font-medium text-slate-700"
+          >
+            Message pour l&apos;employé·e (obligatoire)
+          </label>
+          <textarea
+            id="admin-appeal-msg"
+            value={appealReviewMessage}
+            onChange={(e) => setAppealReviewMessage(e.target.value)}
+            className="input-field mt-1 min-h-[100px] resize-y"
+            rows={4}
+            placeholder={
+              appealReviewModal.decision === "accepted"
+                ? "Ex. : Votre situation est acceptée, le congé est approuvé…"
+                : "Ex. : Malgré votre urgence, nous ne pouvons pas accorder ces dates…"
+            }
+          />
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                setAppealReviewModal(null);
+                setAppealReviewMessage("");
+              }}
+            >
+              Fermer
+            </button>
+            <button
+              type="button"
+              className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
+                appealReviewModal.decision === "accepted"
+                  ? "bg-emerald-600 hover:bg-emerald-700"
+                  : "bg-rose-600 hover:bg-rose-700"
+              }`}
+              onClick={() => void submitAppealReview()}
+            >
+              {appealReviewModal.decision === "accepted"
+                ? "Confirmer l’acceptation"
+                : "Confirmer le refus"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {cancelVacationModal && (
       <div

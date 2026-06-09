@@ -71,6 +71,18 @@ export function RequestMetaDates({ req }: { req: VacationRequest }) {
           )}
         </li>
       )}
+      {req.adminAppealMessage && req.appealReviewedAt && (
+        <li
+          className={
+            req.status === "accepted" ? "text-emerald-900" : "text-rose-900"
+          }
+        >
+          <span className="font-medium text-slate-700">
+            Message de l&apos;administration :
+          </span>{" "}
+          <span className="whitespace-pre-wrap">{req.adminAppealMessage}</span>
+        </li>
+      )}
       {req.status === "cancelled" && req.cancelledAt && (
         <li className="text-slate-600">
           <span className="font-medium text-slate-700">Annulée le :</span>{" "}

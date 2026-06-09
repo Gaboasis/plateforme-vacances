@@ -1280,8 +1280,39 @@ export default function DashboardPage() {
                     )}
                     {req.status === "rejected" && req.rejectionReason && (
                       <p className="mt-2 text-sm text-rose-600">
-                        Motif : {req.rejectionReason}
+                        Motif du refus initial : {req.rejectionReason}
                       </p>
+                    )}
+                    {req.status === "rejected" &&
+                      req.urgentAppealReason &&
+                      !req.appealReviewedAt && (
+                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                          <p className="font-medium">Urgence motivée envoyée</p>
+                          <p className="mt-1 whitespace-pre-wrap">
+                            {req.urgentAppealReason}
+                          </p>
+                          <p className="mt-2 text-xs text-amber-800">
+                            En attente de la réponse de l&apos;administration.
+                          </p>
+                        </div>
+                      )}
+                    {req.appealReviewedAt && req.adminAppealMessage && (
+                      <div
+                        className={`mt-3 rounded-lg border p-3 text-sm ${
+                          req.status === "accepted"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                            : "border-rose-200 bg-rose-50 text-rose-950"
+                        }`}
+                      >
+                        <p className="font-medium">
+                          {req.status === "accepted"
+                            ? "Réponse de l’administration — congé accepté"
+                            : "Réponse de l’administration — urgence refusée"}
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap">
+                          {req.adminAppealMessage}
+                        </p>
+                      </div>
                     )}
                     {req.status === "cancelled" && req.adminCancellationReason && (
                       <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">

@@ -36,6 +36,7 @@ model VacationRequest {
   cancelledAt         DateTime?
   cancellationPendingAt DateTime? // Employé : demande d’annulation après échéance (en attente admin)
   adminCancellationReason String? @db.Text // Message admin à l’employé lors de l’annulation d’un congé accepté
+  adminAppealMessage      String? @db.Text // Message admin à l’employé après traitement d’une urgence motivée
 }
 
 model VacationRulesConfig {
