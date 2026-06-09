@@ -11,6 +11,7 @@ import {
 } from "@/lib/store";
 import { validateVacationRequest } from "@/lib/rules-engine";
 import { getClientIp, getUserAgent } from "@/lib/audit-context";
+import { notifyStaffByEmail } from "@/lib/staff-notify-email";
 
 export async function GET(request: NextRequest) {
   try {
@@ -71,6 +72,13 @@ export async function POST(request: NextRequest) {
         ip: getClientIp(request),
         userAgent: getUserAgent(request),
       });
+      notifyStaffByEmail("vacation", {
+        educatorName,
+        startDate,
+        endDate,
+        status: "rejected",
+        reason: validation.reason,
+      });
       return NextResponse.json({
         request: { ...rejectedRequest, rejectionReason: validation.reason },
         accepted: false,
@@ -97,6 +105,14 @@ export async function POST(request: NextRequest) {
       }),
       ip: getClientIp(request),
       userAgent: getUserAgent(request),
+    });
+
+    notifyStaffByEmail("vacation", {
+      educatorName,
+      startDate,
+      endDate,
+      status,
+      reason: reason ?? undefined,
     });
 
     return NextResponse.json({

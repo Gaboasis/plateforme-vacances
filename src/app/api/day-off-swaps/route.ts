@@ -10,6 +10,8 @@ import {
   isKamarSecretaryForSwap,
   LOUBABA_EDUCATOR_ID,
 } from "@/lib/kamar-loubaba-swap";
+import { isoWeekdayLabel } from "@/lib/weekday-fr";
+import { notifyStaffByEmail } from "@/lib/staff-notify-email";
 
 function validIsoDay(n: number) {
   return Number.isInteger(n) && n >= 1 && n <= 7;
@@ -147,6 +149,13 @@ export async function POST(request: NextRequest) {
         targetEducatorName: target.name,
         message: message ?? undefined,
       });
+      notifyStaffByEmail("dayoff", {
+        requesterName: educatorName,
+        requesterOffDayLabel: isoWeekdayLabel(dayNum),
+        mode: "targeted",
+        targetName: target.name,
+        message: message ?? undefined,
+      });
       return NextResponse.json(created);
     }
 
@@ -159,6 +168,12 @@ export async function POST(request: NextRequest) {
       requesterName: educatorName,
       requesterIsQualified: requesterQualified,
       requesterOffDay: dayNum,
+      mode: "open",
+      message: message ?? undefined,
+    });
+    notifyStaffByEmail("dayoff", {
+      requesterName: educatorName,
+      requesterOffDayLabel: isoWeekdayLabel(dayNum),
       mode: "open",
       message: message ?? undefined,
     });

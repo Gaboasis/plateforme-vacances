@@ -7,6 +7,7 @@ import {
   createAuditLog,
 } from "@/lib/store";
 import { getClientIp, getUserAgent } from "@/lib/audit-context";
+import { notifyStaffByEmail } from "@/lib/staff-notify-email";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED_MIME = new Set([
@@ -133,6 +134,14 @@ export async function POST(request: NextRequest) {
       }),
       ip: getClientIp(request),
       userAgent: getUserAgent(request),
+    });
+
+    notifyStaffByEmail("sick", {
+      educatorName,
+      startDate,
+      endDate,
+      note: note || undefined,
+      hasAttachment: Boolean(attachmentBase64),
     });
 
     return NextResponse.json(created);

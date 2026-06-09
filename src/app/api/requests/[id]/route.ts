@@ -9,6 +9,7 @@ import {
 } from "@/lib/store";
 import { getClientIp, getUserAgent } from "@/lib/audit-context";
 import { findStaffInboxActor, isFullAdmin } from "@/lib/staff-actor";
+import { notifyStaffByEmail } from "@/lib/staff-notify-email";
 
 export async function PATCH(
   request: NextRequest,
@@ -59,6 +60,12 @@ export async function PATCH(
         }),
         ip: getClientIp(request),
         userAgent: getUserAgent(request),
+      });
+      notifyStaffByEmail("vacation_appeal", {
+        educatorName: existing.educatorName,
+        startDate: existing.startDate,
+        endDate: existing.endDate,
+        appealReason: String(urgentAppealReason).trim(),
       });
       return NextResponse.json(updated);
     }
