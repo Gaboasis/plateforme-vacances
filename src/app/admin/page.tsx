@@ -1944,7 +1944,7 @@ export default function AdminPage() {
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                Demandes max. par année (par personne)
+                Demandes max. par année (1 avr → 31 mars, par personne)
               </label>
               <input
                 type="number"
@@ -1966,14 +1966,15 @@ export default function AdminPage() {
 
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
             <h3 className="mb-2 font-medium text-slate-800">
-              Plafond des congés déjà acceptés (année civile)
+              Plafond des congés déjà acceptés (1 avril → 31 mars)
             </h3>
             <p className="mb-4 text-sm text-slate-500">
               Au-delà de ces seuils, la demande est{' '}
               <strong className="text-slate-700">refusée automatiquement</strong> comme les
               autres refus : la personne peut soumettre une{' '}
               <strong className="text-slate-700">urgence motivée</strong> pour examen par
-              l&apos;administration.
+              l&apos;administration. L&apos;année de référence va du{' '}
+              <strong className="text-slate-700">1 avril au 31 mars</strong> suivant.
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -2020,9 +2021,9 @@ export default function AdminPage() {
                   className="input-field"
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Chaque demande acceptée compte pour l&apos;année civile de sa date de
-                  début. Si « demandes max. par année » (ci-dessus) est plus bas, cette
-                  limite-là s&apos;applique d&apos;abord.
+                  Chaque demande acceptée compte pour l&apos;année de congés (1 avril → 31
+                  mars) de sa date de début. Si « demandes max. par année » (ci-dessus) est
+                  plus bas, cette limite-là s&apos;applique d&apos;abord.
                 </p>
               </div>
             </div>

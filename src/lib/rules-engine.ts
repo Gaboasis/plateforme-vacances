@@ -2,6 +2,12 @@ import { addDays, differenceInDays, isWithinInterval, parseISO } from "date-fns"
 import type { Educator, VacationRequest, VacationRules } from "@/types";
 import { getBiWeekFromDate } from "./biweek";
 import { isDemoEducatorId } from "./demo-educator";
+import {
+  clipIntervalToVacationYear,
+  formatVacationYearLabel,
+  getVacationYearStartYear,
+  isDateInVacationYear,
+} from "./vacation-year";
 
 export interface ValidationContext {
   rules: VacationRules;
@@ -89,23 +95,9 @@ function mergedVacationDaysInYear(
   return total;
 }
 
-function clipIntervalToCalendarYear(
-  dStart: Date,
-  dEnd: Date,
-  year: number
-): { s: Date; e: Date } | null {
-  const ys = new Date(year, 0, 1);
-  const ye = new Date(year, 11, 31);
-  const s = dStart < ys ? ys : dStart;
-  const e = dEnd > ye ? ye : dEnd;
-  if (s > e) return null;
-  return { s, e };
-}
-
-/** Jours de congés si la nouvelle période était acceptée (année civile de `proposedStart`) */
 function projectedAcceptedVacationDaysInYear(
   educatorId: string,
-  year: number,
+  vacationYearStart: number,
   vacationRequests: VacationRequest[],
   proposedStart: Date,
   proposedEnd: Date
@@ -116,26 +108,33 @@ function projectedAcceptedVacationDaysInYear(
     try {
       const rs = parseISO(r.startDate);
       const re = parseISO(r.endDate);
-      const c = clipIntervalToCalendarYear(rs, re, year);
+      const c = clipIntervalToVacationYear(rs, re, vacationYearStart);
       if (c) clips.push(c);
     } catch {
       /* skip */
     }
   }
-  const prop = clipIntervalToCalendarYear(proposedStart, proposedEnd, year);
+  const prop = clipIntervalToVacationYear(
+    proposedStart,
+    proposedEnd,
+    vacationYearStart
+  );
   if (prop) clips.push(prop);
   return mergedVacationDaysInYear(clips);
 }
 
 function acceptedRequestCountForYear(
   educatorId: string,
-  year: number,
+  vacationYearStart: number,
   vacationRequests: VacationRequest[]
 ): number {
   return vacationRequests.filter((r) => {
     if (r.educatorId !== educatorId || r.status !== "accepted") return false;
     try {
-      return parseISO(r.startDate).getFullYear() === year;
+      return isDateInVacationYear(
+        parseISO(r.startDate),
+        vacationYearStart
+      );
     } catch {
       return false;
     }
@@ -238,29 +237,30 @@ export function validateVacationRequest(
     };
   }
 
-  // Nombre de demandes cette année
-  const yearStart = new Date(today.getFullYear(), 0, 1);
+  // Nombre de demandes sur l’année de congés en cours (1 avr → 31 mars)
+  const currentVacationYear = getVacationYearStartYear(today);
   const maxPerYear = rules.maxRequestsPerYear ?? 2;
   const requestsThisYear = vacationRequests.filter(
     (r) =>
       r.educatorId === request.educatorId &&
-      new Date(r.createdAt) >= yearStart &&
+      isDateInVacationYear(new Date(r.createdAt), currentVacationYear) &&
       r.status !== "rejected" &&
       r.status !== "cancelled"
   );
   if (requestsThisYear.length >= maxPerYear) {
     return {
       valid: false,
-      reason: `Vous avez déjà ${maxPerYear} demande(s) cette année.`,
+      reason: `Vous avez déjà ${maxPerYear} demande(s) sur la période ${formatVacationYearLabel(currentVacationYear)}.`,
     };
   }
 
-  const requestYear = start.getFullYear();
+  const vacationYearStart = getVacationYearStartYear(start);
+  const yearLabel = formatVacationYearLabel(vacationYearStart);
   const dayCap = rules.maxAcceptedVacationDaysPerYear;
   if (dayCap != null && dayCap > 0) {
     const projectedDays = projectedAcceptedVacationDaysInYear(
       request.educatorId,
-      requestYear,
+      vacationYearStart,
       vacationRequests,
       start,
       end
@@ -268,7 +268,7 @@ export function validateVacationRequest(
     if (projectedDays > dayCap) {
       return {
         valid: false,
-        reason: `Vous avez atteint le plafond de ${dayCap} jours de congés acceptés sur l'année ${requestYear} (ou la demande le ferait dépasser). Vous pouvez motiver une urgence pour que l'administration l'examine.`,
+        reason: `Vous avez atteint le plafond de ${dayCap} jours de congés acceptés sur la période ${yearLabel} (ou la demande le ferait dépasser). Vous pouvez motiver une urgence pour que l'administration l'examine.`,
       };
     }
   }
@@ -277,13 +277,13 @@ export function validateVacationRequest(
   if (acceptedSlotCap != null && acceptedSlotCap > 0) {
     const acceptedSoFar = acceptedRequestCountForYear(
       request.educatorId,
-      requestYear,
+      vacationYearStart,
       vacationRequests
     );
     if (acceptedSoFar >= acceptedSlotCap) {
       return {
         valid: false,
-        reason: `Vous avez déjà ${acceptedSlotCap} demande(s) acceptée(s) sur l'année ${requestYear}. Vous pouvez motiver une urgence pour que l'administration examine une demande supplémentaire.`,
+        reason: `Vous avez déjà ${acceptedSlotCap} demande(s) acceptée(s) sur la période ${yearLabel}. Vous pouvez motiver une urgence pour que l'administration examine une demande supplémentaire.`,
       };
     }
   }

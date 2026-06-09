@@ -106,14 +106,13 @@ export interface VacationRules {
   maxRequestsPerYear: number;
 
   /**
-   * Plafond de jours de congés **acceptés** cumulés sur l’année civile (périodes fusionnées
-   * si elles se chevauchent ou se touchent). Au-delà, nouvelle demande refusée automatiquement
-   * (même parcours urgence motivée / admin que les autres refus).
+   * Plafond de jours de congés **acceptés** cumulés sur l’année de congés (1 avril → 31 mars,
+   * périodes fusionnées si elles se chevauchent ou se touchent).
    */
   maxAcceptedVacationDaysPerYear?: number;
   /**
-   * Nombre maximal de demandes **acceptées** dont la date de début tombe dans l’année civile
-   * de la période demandée. Au-delà, refus automatique (sauf urgence approuvée par l’admin).
+   * Nombre maximal de demandes **acceptées** dont la date de début tombe dans l’année de congés
+   * (1 avril → 31 mars) de la période demandée.
    */
   maxAcceptedRequestsPerYear?: number;
 
