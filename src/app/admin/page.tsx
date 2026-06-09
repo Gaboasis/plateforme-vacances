@@ -357,6 +357,66 @@ export default function AdminPage() {
     return null;
   };
 
+  const isEducatorProfileActive = (
+    educatorId: string,
+    educatorName: string
+  ): boolean =>
+    educatorsList.some(
+      (e) => e.id === educatorId && e.name === educatorName
+    );
+
+  const handleArchiveDepartedEducator = async (
+    educatorId: string,
+    educatorName: string
+  ) => {
+    const actor = getStaffActorId();
+    if (!actor) {
+      alert("Session admin introuvable. Reconnectez-vous.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Archiver le compte de ${educatorName} ?\n\n` +
+          "• Elle ne pourra plus se connecter\n" +
+          "• Ses congés, déclarations maladie et échanges seront conservés sous le compte admin (son nom restera visible)\n" +
+          "• Les échanges en attente vers elle seront annulés\n\n" +
+          "Action irréversible."
+      )
+    ) {
+      return;
+    }
+    const res = await fetch("/api/admin/archive-educator", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fromEducatorId: educatorId,
+        _actorEducatorId: actor,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setEducatorsList((prev) => prev.filter((e) => e.id !== educatorId));
+      const totalSwaps =
+        (data.dayOffSwapsAsRequester ?? 0) + (data.dayOffSwapsAsAccepter ?? 0);
+      alert(
+        `Compte archivé.\n` +
+          `${data.vacationRequests ?? 0} congé(s), ` +
+          `${data.sickLeaveReports ?? 0} maladie(s), ` +
+          `${totalSwaps} échange(s) conservés (nom : ${educatorName}).`
+      );
+      const [reqRes, sickRes, swapRes] = await Promise.all([
+        fetch("/api/requests"),
+        fetch("/api/sick-leaves"),
+        fetch("/api/day-off-swaps?all=1"),
+      ]);
+      if (reqRes.ok) setRequests(await reqRes.json());
+      if (sickRes.ok) setSickReports(await sickRes.json());
+      if (swapRes.ok) setDayOffSwaps(await swapRes.json());
+    } else {
+      alert(typeof data.error === "string" ? data.error : "Archivage impossible.");
+    }
+  };
+
   const handleDeleteVacationPermanently = async (requestId: string) => {
     const admin = getAdminFromSession();
     if (!admin) {
@@ -584,18 +644,19 @@ export default function AdminPage() {
       !r.appealReviewedAt
   ).length;
 
-  /** Demandes regroupées par auteur, noms triés (fr), demandes récentes d’abord dans chaque groupe */
+  /** Demandes regroupées par auteur (id + nom pour conserver les dossiers archivés). */
   const requestsByEducator = (() => {
     const map = new Map<string, VacationRequest[]>();
     for (const r of requests) {
-      const arr = map.get(r.educatorId);
+      const key = `${r.educatorId}\0${r.educatorName}`;
+      const arr = map.get(key);
       if (arr) arr.push(r);
-      else map.set(r.educatorId, [r]);
+      else map.set(key, [r]);
     }
     return Array.from(map.entries())
-      .map(([educatorId, reqs]) => ({
-        educatorId,
-        educatorName: reqs[0]?.educatorName ?? educatorId,
+      .map(([, reqs]) => ({
+        educatorId: reqs[0]?.educatorId ?? "",
+        educatorName: reqs[0]?.educatorName ?? "",
         requests: [...reqs].sort(
           (a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -611,14 +672,15 @@ export default function AdminPage() {
   const sickReportsByEducator = (() => {
     const map = new Map<string, SickLeaveReport[]>();
     for (const s of sickReports) {
-      const arr = map.get(s.educatorId);
+      const key = `${s.educatorId}\0${s.educatorName}`;
+      const arr = map.get(key);
       if (arr) arr.push(s);
-      else map.set(s.educatorId, [s]);
+      else map.set(key, [s]);
     }
     return Array.from(map.entries())
-      .map(([educatorId, items]) => ({
-        educatorId,
-        educatorName: items[0]?.educatorName ?? educatorId,
+      .map(([, items]) => ({
+        educatorId: items[0]?.educatorId ?? "",
+        educatorName: items[0]?.educatorName ?? "",
         reports: [...items].sort(
           (a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -780,16 +842,27 @@ export default function AdminPage() {
           {!requestsLoadError && requests.length > 0 && (
             <div className="space-y-6">
               {requestsByEducator.map((group) => {
-                const edu = educatorsList.find((e) => e.id === group.educatorId);
+                const edu = educatorsList.find(
+                  (e) =>
+                    e.id === group.educatorId && e.name === group.educatorName
+                );
                 return (
                   <div
-                    key={group.educatorId}
+                    key={`${group.educatorId}-${group.educatorName}`}
                     className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
                   >
                     <div className="border-b border-slate-200 bg-gradient-to-r from-slate-100 to-primary-50/40 px-4 py-3 sm:px-5">
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <h3 className="font-display text-base font-semibold text-slate-800">
                           {group.educatorName}
+                          {!isEducatorProfileActive(
+                            group.educatorId,
+                            group.educatorName
+                          ) && (
+                            <span className="ml-2 text-xs font-normal text-slate-500">
+                              (données archivées)
+                            </span>
+                          )}
                           {edu?.seniorityRank != null && (
                             <span className="ml-2 text-sm font-normal text-slate-500">
                               (ancienneté : rang {edu.seniorityRank})
@@ -970,10 +1043,13 @@ export default function AdminPage() {
           ) : (
             <div className="space-y-6">
               {sickReportsByEducator.map((group) => {
-                const edu = educatorsList.find((e) => e.id === group.educatorId);
+                const edu = educatorsList.find(
+                  (e) =>
+                    e.id === group.educatorId && e.name === group.educatorName
+                );
                 return (
                   <div
-                    key={group.educatorId}
+                    key={`${group.educatorId}-${group.educatorName}`}
                     className="overflow-hidden rounded-2xl border border-rose-200/80 bg-white shadow-sm"
                   >
                     <div className="border-b border-rose-100 bg-gradient-to-r from-rose-50 to-white px-4 py-3 sm:px-5">
@@ -981,6 +1057,14 @@ export default function AdminPage() {
                         <h3 className="font-display text-base font-semibold text-slate-800 flex items-center gap-2">
                           <Stethoscope className="h-4 w-4 text-rose-600" />
                           {group.educatorName}
+                          {!isEducatorProfileActive(
+                            group.educatorId,
+                            group.educatorName
+                          ) && (
+                            <span className="text-xs font-normal text-slate-500">
+                              (données archivées)
+                            </span>
+                          )}
                           {edu?.seniorityRank != null && (
                             <span className="text-sm font-normal text-slate-500">
                               (ancienneté : rang {edu.seniorityRank})
@@ -1573,6 +1657,22 @@ export default function AdminPage() {
                         </button>
                       )}
                     </div>
+                    {!inboxOnly &&
+                      (edu.role === "educatrice" ||
+                        edu.role === "cuisiniere" ||
+                        edu.role === "entretien") &&
+                      edu.id !== "demo-visite" && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleArchiveDepartedEducator(edu.id, edu.name)
+                          }
+                          className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-rose-700 hover:text-rose-800 hover:underline touch-manipulation"
+                        >
+                          <Ban className="h-4 w-4 shrink-0" />
+                          Archiver (a quitté l&apos;entreprise)
+                        </button>
+                      )}
                   </div>
                 </div>
               ))}

@@ -401,6 +401,7 @@ export const AUDIT_ACTIONS = {
   VACATION_DELETED_ADMIN: "vacation_deleted_by_admin",
   SICK_LEAVE_DELETED_ADMIN: "sick_leave_deleted_by_admin",
   DAY_OFF_SWAP_DELETED_ADMIN: "day_off_swap_deleted_by_admin",
+  EDUCATOR_ARCHIVED: "educator_archived",
 } as const;
 
 function dayOffSwapToType(row: {
