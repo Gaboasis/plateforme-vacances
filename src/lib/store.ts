@@ -88,6 +88,41 @@ export async function updateEducator(id: string, updates: Partial<Educator>) {
   return educatorToType(updated);
 }
 
+export async function createEducator(data: {
+  id: string;
+  name: string;
+  email: string;
+  role: Educator["role"];
+  seniorityRank?: number;
+  isQualified?: boolean;
+  passwordHash: string;
+}): Promise<Educator> {
+  const id = data.id.trim();
+  const email = data.email.trim().toLowerCase();
+  const conflict = await prisma.educator.findFirst({
+    where: { OR: [{ id }, { email }] },
+  });
+  if (conflict) {
+    throw new Error(
+      conflict.id === id
+        ? "Cet identifiant de profil existe déjà."
+        : "Ce courriel est déjà utilisé."
+    );
+  }
+  const created = await prisma.educator.create({
+    data: {
+      id,
+      name: data.name.trim(),
+      email,
+      role: data.role,
+      seniorityRank: data.seniorityRank ?? null,
+      isQualified: data.isQualified ?? null,
+      passwordHash: data.passwordHash,
+    },
+  });
+  return educatorToType(created);
+}
+
 const defaultRules: VacationRules = {
   maxConcurrentVacations: 2,
   minAdvanceNoticeDays: 14,

@@ -16,6 +16,7 @@ const educators = [
   { id: "10", name: "Karima", email: "karima@garderie.fr", role: "educatrice" as const, seniorityRank: 10, isQualified: true },
   { id: "11", name: "Manal", email: "manal@garderie.fr", role: "educatrice" as const, seniorityRank: 11, isQualified: false },
   { id: "aicha", name: "Aicha", email: "aicha@garderie.fr", role: "educatrice" as const, seniorityRank: 12, isQualified: false },
+  { id: "samiha", name: "Samiha", email: "samiha@garderie.fr", role: "educatrice" as const, seniorityRank: 13, isQualified: true },
   { id: "amineh", name: "Amineh", email: "amineh@garderie.fr", role: "cuisiniere" as const },
   { id: "zooka", name: "Zooka", email: "zooka@garderie.fr", role: "entretien" as const },
   { id: "kamar", name: "Kamar", email: "kamar@garderie.fr", role: "secretaire" as const },

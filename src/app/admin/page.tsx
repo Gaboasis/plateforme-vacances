@@ -77,6 +77,16 @@ export default function AdminPage() {
     educatorName: string;
   } | null>(null);
   const [cancelVacationMessage, setCancelVacationMessage] = useState("");
+  const [addEducatorForm, setAddEducatorForm] = useState({
+    id: "",
+    name: "",
+    email: "",
+    seniorityRank: "",
+    isQualified: true,
+    password: "",
+  });
+  const [addEducatorError, setAddEducatorError] = useState("");
+  const [addingEducator, setAddingEducator] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -414,6 +424,55 @@ export default function AdminPage() {
       if (swapRes.ok) setDayOffSwaps(await swapRes.json());
     } else {
       alert(typeof data.error === "string" ? data.error : "Archivage impossible.");
+    }
+  };
+
+  const handleAddEducator = async () => {
+    const actor = getStaffActorId();
+    if (!actor) {
+      setAddEducatorError("Session admin introuvable.");
+      return;
+    }
+    setAddingEducator(true);
+    setAddEducatorError("");
+    try {
+      const res = await fetch("/api/educators", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: addEducatorForm.id.trim().toLowerCase(),
+          name: addEducatorForm.name.trim(),
+          email: addEducatorForm.email.trim(),
+          role: "educatrice",
+          seniorityRank: addEducatorForm.seniorityRank.trim() || undefined,
+          isQualified: addEducatorForm.isQualified,
+          password: addEducatorForm.password,
+          _actorEducatorId: actor,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setEducatorsList((prev) => [...prev, data]);
+        setAddEducatorForm({
+          id: "",
+          name: "",
+          email: "",
+          seniorityRank: "",
+          isQualified: true,
+          password: "",
+        });
+        alert(
+          `Compte créé pour ${data.name}. Communiquez-lui son mot de passe initial.`
+        );
+      } else {
+        setAddEducatorError(
+          typeof data.error === "string" ? data.error : "Création impossible."
+        );
+      }
+    } catch {
+      setAddEducatorError("Erreur de connexion.");
+    } finally {
+      setAddingEducator(false);
     }
   };
 
@@ -1491,6 +1550,122 @@ export default function AdminPage() {
             Rang d&apos;ancienneté (1 = plus ancienne, 15 = plus récente). Le
             statut qualifié sert au ratio et à la priorité.
           </p>
+          {!inboxOnly && (
+            <div className="rounded-xl border border-primary-200 bg-primary-50/40 p-4 space-y-3">
+              <h3 className="font-medium text-slate-800 flex items-center gap-2">
+                <Plus className="h-4 w-4 text-primary-600" />
+                Ajouter une éducatrice
+              </h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Nom
+                  </label>
+                  <input
+                    type="text"
+                    value={addEducatorForm.name}
+                    onChange={(e) =>
+                      setAddEducatorForm((f) => ({ ...f, name: e.target.value }))
+                    }
+                    placeholder="Samiha"
+                    className="input-field text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Identifiant profil
+                  </label>
+                  <input
+                    type="text"
+                    value={addEducatorForm.id}
+                    onChange={(e) =>
+                      setAddEducatorForm((f) => ({
+                        ...f,
+                        id: e.target.value.toLowerCase(),
+                      }))
+                    }
+                    placeholder="samiha"
+                    className="input-field text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Courriel
+                  </label>
+                  <input
+                    type="email"
+                    value={addEducatorForm.email}
+                    onChange={(e) =>
+                      setAddEducatorForm((f) => ({ ...f, email: e.target.value }))
+                    }
+                    placeholder="samiha@garderie.fr"
+                    className="input-field text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Rang ancienneté (1–15)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={15}
+                    value={addEducatorForm.seniorityRank}
+                    onChange={(e) =>
+                      setAddEducatorForm((f) => ({
+                        ...f,
+                        seniorityRank: e.target.value,
+                      }))
+                    }
+                    placeholder="13"
+                    className="input-field text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Mot de passe initial
+                  </label>
+                  <input
+                    type="password"
+                    value={addEducatorForm.password}
+                    onChange={(e) =>
+                      setAddEducatorForm((f) => ({
+                        ...f,
+                        password: e.target.value,
+                      }))
+                    }
+                    placeholder="Min. 4 caractères"
+                    className="input-field text-sm"
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={addEducatorForm.isQualified}
+                  onChange={(e) =>
+                    setAddEducatorForm((f) => ({
+                      ...f,
+                      isQualified: e.target.checked,
+                    }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Éducatrice qualifiée
+              </label>
+              {addEducatorError && (
+                <p className="text-sm text-rose-600">{addEducatorError}</p>
+              )}
+              <button
+                type="button"
+                onClick={handleAddEducator}
+                disabled={addingEducator}
+                className="btn-primary text-sm"
+              >
+                {addingEducator ? "Création…" : "Créer le compte"}
+              </button>
+            </div>
+          )}
           <div className="space-y-4">
             {educatorsList
               .filter((e) => e.role !== "admin")
