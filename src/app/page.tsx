@@ -18,7 +18,6 @@ const FALLBACK_EDUCATORS: { id: string; name: string; role: string }[] = [
   { id: "3", name: "Saliha", role: "educatrice" },
   { id: "4", name: "Hanady", role: "educatrice" },
   { id: "5", name: "Souhir", role: "educatrice" },
-  { id: "6", name: "Hajar", role: "educatrice" },
   { id: "7", name: "Khira", role: "educatrice" },
   { id: "8", name: "Azza", role: "educatrice" },
   { id: "9", name: "Loubaba", role: "educatrice" },

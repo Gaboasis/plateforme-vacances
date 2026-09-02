@@ -9,7 +9,6 @@ const educators = [
   { id: "3", name: "Saliha", email: "saliha@garderie.fr", role: "educatrice" as const, seniorityRank: 3, isQualified: true },
   { id: "4", name: "Hanady", email: "hanady@garderie.fr", role: "educatrice" as const, seniorityRank: 4, isQualified: true },
   { id: "5", name: "Souhir", email: "souhir@garderie.fr", role: "educatrice" as const, seniorityRank: 5, isQualified: false },
-  { id: "6", name: "Hajar", email: "hajar@garderie.fr", role: "educatrice" as const, seniorityRank: 6, isQualified: false },
   { id: "7", name: "Khira", email: "khira@garderie.fr", role: "educatrice" as const, seniorityRank: 7, isQualified: true },
   { id: "8", name: "Azza", email: "azza@garderie.fr", role: "educatrice" as const, seniorityRank: 8, isQualified: false },
   { id: "9", name: "Loubaba", email: "loubaba@garderie.fr", role: "educatrice" as const, seniorityRank: 9, isQualified: true },
@@ -189,7 +188,56 @@ async function main() {
 
   await ensurePrePlatformVacations();
 
+  await archiveDepartedEducators(["6"]);
+
   console.log("Seed terminé ✓");
+}
+
+/** Employé·es partis·es : transfère l’historique vers admin et supprime le compte. */
+async function archiveDepartedEducators(fromIds: string[]) {
+  const archiveToId = "admin";
+  const admin = await prisma.educator.findUnique({ where: { id: archiveToId } });
+  if (!admin || admin.role !== "admin") {
+    console.warn("Archivage ignoré : compte admin introuvable.");
+    return;
+  }
+
+  for (const fromId of fromIds) {
+    const from = await prisma.educator.findUnique({ where: { id: fromId } });
+    if (!from || from.role === "admin" || fromId === archiveToId) continue;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.vacationRequest.updateMany({
+        where: { educatorId: fromId },
+        data: { educatorId: archiveToId },
+      });
+      await tx.sickLeaveReport.updateMany({
+        where: { educatorId: fromId },
+        data: { educatorId: archiveToId },
+      });
+      await tx.dayOffSwapRequest.updateMany({
+        where: { requesterId: fromId },
+        data: { requesterId: archiveToId },
+      });
+      await tx.dayOffSwapRequest.updateMany({
+        where: { acceptedById: fromId },
+        data: { acceptedById: archiveToId },
+      });
+      await tx.dayOffSwapRequest.updateMany({
+        where: { targetEducatorId: fromId, status: "pending" },
+        data: { status: "cancelled", updatedAt: new Date() },
+      });
+      await tx.activityAuditLog.updateMany({
+        where: { educatorId: fromId },
+        data: { educatorId: archiveToId },
+      });
+      await tx.educator.delete({ where: { id: fromId } });
+    });
+
+    console.log(
+      `Archivage ${from.name} (${fromId}) : compte supprimé, historique conservé sous admin.`
+    );
+  }
 }
 
 main()
