@@ -106,12 +106,14 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
         </h2>
         <p className="text-sm text-slate-600">
           Les revenus et salaires du journal sont cumulés entre <strong>Du</strong> et{" "}
-          <strong>Au</strong>. Pour chaque <strong>date de jour férié</strong> dans cette
-          période, l&apos;indemnité suit la règle québécoise :{" "}
-          <strong>1/20 du salaire brut</strong> gagné durant les{" "}
-          <strong>4 semaines complètes</strong> qui précèdent la semaine du férié — en
-          lisant les heures saisies dans le journal,{" "}
-          <em>même si ces semaines sont avant la date « Du »</em>.
+          <strong>Au</strong>. Après <strong>Calculer</strong>, vous voyez le résumé (revenus,
+          paie, fériés) et la section{" "}
+          <strong>5 — Dépenses fixes</strong> (comme la feuille Excel), où vous saisissez
+          hydro, assurance, prêt, etc. pour la période. Pour chaque{" "}
+          <strong>date de jour férié</strong>, l&apos;indemnité suit la règle québécoise :{" "}
+          <strong>1/20 du salaire brut</strong> sur les{" "}
+          <strong>4 semaines complètes</strong> avant la semaine du férié (heures du journal,
+          y compris avant « Du »).
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm block">
@@ -225,7 +227,9 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
                   {formatCad(report.expenses.statutoryHolidayCents)}
                 </p>
                 <p>Autres (journal) : {formatCad(report.expenses.otherDailyCents)}</p>
-                <p>Frais fixes : {formatCad(report.expenses.fixedExpensesCents)}</p>
+                <p>
+                  5. Dépenses fixes : {formatCad(report.expenses.fixedExpensesCents)}
+                </p>
                 <p className="font-bold text-rose-800 pt-1">
                   Total {formatCad(report.expenses.totalCents)}
                 </p>
@@ -243,53 +247,17 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
             </div>
           </div>
 
-          {report.holidayIndemnityLines.length > 0 && (
-            <div className="card overflow-x-auto">
-              <h3 className="font-semibold text-slate-800 mb-3">
-                Détail indemnités jours fériés (Québec)
+          <div id="depenses-fixes" className="card space-y-4 scroll-mt-4">
+            <div>
+              <h3 className="font-semibold text-slate-800">
+                5 — Dépenses fixes (période)
               </h3>
-              <table className="w-full text-sm min-w-[520px]">
-                <thead>
-                  <tr className="text-left text-slate-500 border-b">
-                    <th className="py-2 pr-2">Employée</th>
-                    <th className="py-2 pr-2">Férié</th>
-                    <th className="py-2 pr-2">Salaire ref. (4 sem.)</th>
-                    <th className="py-2 pr-2">Période ref.</th>
-                    <th className="py-2 text-right">Indemnité</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.holidayIndemnityLines.map((h, i) => (
-                    <tr key={`${h.educatorId}-${h.holidayDate}-${i}`} className="border-b border-slate-50">
-                      <td className="py-2 pr-2">{h.educatorName}</td>
-                      <td className="py-2 pr-2 whitespace-nowrap">
-                        {format(parseISO(h.holidayDate), "d MMM yyyy", { locale: fr })}
-                      </td>
-                      <td className="py-2 pr-2">
-                        {formatCad(h.referenceGrossCents)}
-                        <span className="text-slate-400 text-xs ml-1">
-                          ({h.referenceDaysWorked} j.)
-                        </span>
-                      </td>
-                      <td className="py-2 pr-2 text-xs text-slate-600 whitespace-nowrap">
-                        {h.referenceFrom} → {h.referenceTo}
-                      </td>
-                      <td className="py-2 text-right font-medium">
-                        {formatCad(h.indemnityCents)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="text-xs text-slate-500 mt-2">
-                Formule : salaire brut des 4 semaines avant la semaine du férié ÷ 20
-                (par férié et par employée).
+              <p className="text-sm text-slate-600 mt-1">
+                Même rôle que l&apos;onglet <strong>5_Dépenses Fixes</strong> de l&apos;Excel :
+                une ligne par poste (prêt, hydro, Bell…). Les montants sont enregistrés pour
+                les dates <strong>Du / Au</strong> ci-dessus.
               </p>
             </div>
-          )}
-
-          <div className="card space-y-4">
-            <h3 className="font-semibold text-slate-800">Dépenses fixes (période)</h3>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 items-end">
               <label className="text-sm block sm:col-span-2">
                 <span className="text-slate-600">Dépense</span>
@@ -341,7 +309,12 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
               <Plus className="h-4 w-4" />
               Ajouter la dépense fixe
             </button>
-            {report.fixedExpenses.length > 0 && (
+            {report.fixedExpenses.length === 0 ? (
+              <p className="text-sm text-slate-500 border border-dashed border-slate-200 rounded-xl p-4">
+                Aucune dépense fixe pour cette période. Choisissez un libellé (liste
+                suggérée), entrez le montant, puis cliquez sur Ajouter.
+              </p>
+            ) : (
               <ul className="divide-y divide-slate-100 text-sm">
                 {report.fixedExpenses.map((f) => (
                   <li key={f.id} className="flex justify-between items-center py-2 gap-2">
@@ -363,6 +336,51 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
               </ul>
             )}
           </div>
+
+          {report.holidayIndemnityLines.length > 0 && (
+            <div className="card overflow-x-auto">
+              <h3 className="font-semibold text-slate-800 mb-3">
+                Détail indemnités jours fériés (Québec)
+              </h3>
+              <table className="w-full text-sm min-w-[520px]">
+                <thead>
+                  <tr className="text-left text-slate-500 border-b">
+                    <th className="py-2 pr-2">Employée</th>
+                    <th className="py-2 pr-2">Férié</th>
+                    <th className="py-2 pr-2">Salaire ref. (4 sem.)</th>
+                    <th className="py-2 pr-2">Période ref.</th>
+                    <th className="py-2 text-right">Indemnité</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.holidayIndemnityLines.map((h, i) => (
+                    <tr key={`${h.educatorId}-${h.holidayDate}-${i}`} className="border-b border-slate-50">
+                      <td className="py-2 pr-2">{h.educatorName}</td>
+                      <td className="py-2 pr-2 whitespace-nowrap">
+                        {format(parseISO(h.holidayDate), "d MMM yyyy", { locale: fr })}
+                      </td>
+                      <td className="py-2 pr-2">
+                        {formatCad(h.referenceGrossCents)}
+                        <span className="text-slate-400 text-xs ml-1">
+                          ({h.referenceDaysWorked} j.)
+                        </span>
+                      </td>
+                      <td className="py-2 pr-2 text-xs text-slate-600 whitespace-nowrap">
+                        {h.referenceFrom} → {h.referenceTo}
+                      </td>
+                      <td className="py-2 text-right font-medium">
+                        {formatCad(h.indemnityCents)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-slate-500 mt-2">
+                Formule : salaire brut des 4 semaines avant la semaine du férié ÷ 20
+                (par férié et par employée).
+              </p>
+            </div>
+          )}
         </>
       )}
     </div>
