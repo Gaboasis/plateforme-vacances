@@ -1,8 +1,10 @@
 import { prisma } from "./db";
 import {
-  computeStatutoryHolidayIndemnities,
-  totalHolidayIndemnityCents,
-  type EducatorPeriodPayStats,
+  computeStatutoryHolidayIndemnitiesFromJournals,
+  referencePayWindowForHoliday,
+  type EducatorHolidayIndemnitySummary,
+  type GrossByEducatorDay,
+  type HolidayIndemnityLine,
 } from "./quebec-statutory-holiday";
 
 function parseDateOnly(dateStr: string): Date {
@@ -11,10 +13,17 @@ function parseDateOnly(dateStr: string): Date {
   return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
 }
 
+export type EducatorPeriodPayStats = {
+  educatorId: string;
+  educatorName: string;
+  totalGrossCents: number;
+  daysWorked: number;
+};
+
 export type PeriodReport = {
   from: string;
   to: string;
-  statutoryHolidayCount: number;
+  statutoryHolidayDates: string[];
   daysWithJournal: number;
   revenue: {
     enrollmentCents: number;
@@ -35,7 +44,8 @@ export type PeriodReport = {
   };
   netCents: number;
   educatorStats: EducatorPeriodPayStats[];
-  holidayIndemnities: ReturnType<typeof computeStatutoryHolidayIndemnities>;
+  holidayIndemnityLines: HolidayIndemnityLine[];
+  holidayIndemnitiesByEducator: EducatorHolidayIndemnitySummary[];
   fixedExpenses: {
     id: string;
     label: string;
@@ -45,14 +55,53 @@ export type PeriodReport = {
   }[];
 };
 
+function buildGrossByEducatorDay(
+  journals: { journalDate: Date; lines: { kind: string; category: string; educatorId: string | null; educatorName: string | null; amountCents: number; hoursWorked: number | null }[] }[]
+): GrossByEducatorDay {
+  const map: GrossByEducatorDay = new Map();
+  for (const j of journals) {
+    const dayKey = j.journalDate.toISOString().slice(0, 10);
+    for (const line of j.lines) {
+      if (line.kind !== "expense" || line.category !== "expense_educator_gross") {
+        continue;
+      }
+      if (!line.educatorId || line.amountCents <= 0) continue;
+      if (line.hoursWorked == null || line.hoursWorked <= 0) continue;
+      const byDay = map.get(line.educatorId) ?? new Map();
+      const prev = byDay.get(dayKey) ?? {
+        gross: 0,
+        name: line.educatorName ?? line.educatorId,
+      };
+      prev.gross += line.amountCents;
+      byDay.set(dayKey, prev);
+      map.set(line.educatorId, byDay);
+    }
+  }
+  return map;
+}
+
+function parseHolidayDates(raw: string[]): string[] {
+  const out: string[] = [];
+  for (const s of raw) {
+    const t = s.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) out.push(t);
+  }
+  return Array.from(new Set(out)).sort();
+}
+
 export async function buildPeriodReport(options: {
   fromStr: string;
   toStr: string;
-  statutoryHolidayCount: number;
+  statutoryHolidayDates: string[];
 }): Promise<PeriodReport> {
   const from = parseDateOnly(options.fromStr);
   const to = parseDateOnly(options.toStr);
   if (from > to) throw new Error("La date de début doit précéder la fin.");
+
+  const holidayDates = parseHolidayDates(options.statutoryHolidayDates);
+  const holidaysInPeriod = holidayDates.filter(
+    (d) => d >= options.fromStr && d <= options.toStr
+  );
 
   const journals = await prisma.dailyJournal.findMany({
     where: { journalDate: { gte: from, lte: to } },
@@ -140,20 +189,41 @@ export async function buildPeriodReport(options: {
 
   const educatorStats: EducatorPeriodPayStats[] = Array.from(
     educatorMap.entries()
-  ).map(
-    ([educatorId, v]) => ({
-      educatorId,
-      educatorName: v.name,
-      totalGrossCents: v.gross,
-      daysWorked: v.days.size,
-    })
-  );
+  ).map(([educatorId, v]) => ({
+    educatorId,
+    educatorName: v.name,
+    totalGrossCents: v.gross,
+    daysWorked: v.days.size,
+  }));
 
-  const holidayIndemnities = computeStatutoryHolidayIndemnities(
-    educatorStats,
-    options.statutoryHolidayCount
-  );
-  expenses.statutoryHolidayCents = totalHolidayIndemnityCents(holidayIndemnities);
+  let holidayIndemnityLines: HolidayIndemnityLine[] = [];
+  let holidayIndemnitiesByEducator: EducatorHolidayIndemnitySummary[] = [];
+
+  if (holidaysInPeriod.length > 0) {
+    let earliestRef = parseDateOnly(holidaysInPeriod[0]);
+    let latestRef = parseDateOnly(holidaysInPeriod[0]);
+    for (const h of holidaysInPeriod) {
+      const w = referencePayWindowForHoliday(h);
+      const rf = parseDateOnly(w.referenceFrom);
+      const rt = parseDateOnly(w.referenceTo);
+      if (rf < earliestRef) earliestRef = rf;
+      if (rt > latestRef) latestRef = rt;
+    }
+
+    const lookbackJournals = await prisma.dailyJournal.findMany({
+      where: { journalDate: { gte: earliestRef, lte: latestRef } },
+      include: { lines: true },
+    });
+
+    const grossByEducatorDay = buildGrossByEducatorDay(lookbackJournals);
+    const computed = computeStatutoryHolidayIndemnitiesFromJournals({
+      holidayDatesInPeriod: holidaysInPeriod,
+      grossByEducatorDay,
+    });
+    holidayIndemnityLines = computed.lines;
+    holidayIndemnitiesByEducator = computed.byEducator;
+    expenses.statutoryHolidayCents = computed.totalCents;
+  }
 
   const fixedRows = await prisma.fixedExpenseEntry.findMany({
     where: {
@@ -178,13 +248,14 @@ export async function buildPeriodReport(options: {
   return {
     from: options.fromStr,
     to: options.toStr,
-    statutoryHolidayCount: Math.max(0, Math.floor(options.statutoryHolidayCount)),
+    statutoryHolidayDates: holidaysInPeriod,
     daysWithJournal: journals.length,
     revenue,
     expenses,
     netCents,
     educatorStats,
-    holidayIndemnities,
+    holidayIndemnityLines,
+    holidayIndemnitiesByEducator,
     fixedExpenses,
   };
 }

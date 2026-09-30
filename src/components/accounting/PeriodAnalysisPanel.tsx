@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
-import { BarChart3, Plus, Trash2, RefreshCw } from "lucide-react";
+import { BarChart3, Plus, Trash2, RefreshCw, Calendar } from "lucide-react";
 import type { PeriodReport } from "@/lib/accounting-period-report";
 import { FIXED_EXPENSE_SUGGESTIONS } from "@/lib/fixed-expense-catalog";
 import { formatCad, parseCadInput } from "@/lib/money";
@@ -15,7 +15,8 @@ type Props = {
 export function PeriodAnalysisPanel({ actorId }: Props) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [statutoryHolidays, setStatutoryHolidays] = useState("0");
+  const [holidayDates, setHolidayDates] = useState<string[]>([]);
+  const [newHolidayDate, setNewHolidayDate] = useState("");
   const [report, setReport] = useState<PeriodReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -26,6 +27,14 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
   const [fixNote, setFixNote] = useState("");
   const [addingFixed, setAddingFixed] = useState(false);
 
+  const addHolidayDate = () => {
+    const d = newHolidayDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    if (holidayDates.includes(d)) return;
+    setHolidayDates((prev) => [...prev, d].sort());
+    setNewHolidayDate("");
+  };
+
   const loadReport = async () => {
     if (!actorId || !from || !to) return;
     setLoading(true);
@@ -34,7 +43,7 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
       const q = new URLSearchParams({
         from,
         to,
-        statutoryHolidays: statutoryHolidays || "0",
+        statutoryHolidayDates: holidayDates.join(","),
         _actorEducatorId: actorId,
       });
       const res = await fetch(`/api/accounting/period-report?${q}`);
@@ -96,11 +105,15 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
           Analyse de période
         </h2>
         <p className="text-sm text-slate-600">
-          Cumule les journées enregistrées entre deux dates. Indiquez le nombre de{" "}
-          <strong>jours fériés</strong> dans la période : l&apos;indemnité est calculée
-          au Québec (1/20 du salaire brut cumulé par jour férié, par employée).
+          Les revenus et salaires du journal sont cumulés entre <strong>Du</strong> et{" "}
+          <strong>Au</strong>. Pour chaque <strong>date de jour férié</strong> dans cette
+          période, l&apos;indemnité suit la règle québécoise :{" "}
+          <strong>1/20 du salaire brut</strong> gagné durant les{" "}
+          <strong>4 semaines complètes</strong> qui précèdent la semaine du férié — en
+          lisant les heures saisies dans le journal,{" "}
+          <em>même si ces semaines sont avant la date « Du »</em>.
         </p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm block">
             <span className="text-slate-600">Du</span>
             <input
@@ -119,32 +132,66 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
               onChange={(e) => setTo(e.target.value)}
             />
           </label>
-          <label className="text-sm block">
-            <span className="text-slate-600">Jours fériés (période)</span>
-            <input
-              type="number"
-              min={0}
-              max={30}
-              className="input-field mt-1"
-              value={statutoryHolidays}
-              onChange={(e) => setStatutoryHolidays(e.target.value)}
-            />
-          </label>
-          <div className="flex items-end">
-            <button
-              type="button"
-              className="btn-primary w-full"
-              disabled={loading || !from || !to || !actorId}
-              onClick={loadReport}
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Calculer
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+          <p className="text-sm font-medium text-slate-800 flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Dates des jours fériés (dans la période)
+          </p>
+          <div className="flex flex-wrap gap-2 items-end">
+            <label className="text-sm flex-1 min-w-[160px]">
+              <span className="text-slate-600">Date du férié</span>
+              <input
+                type="date"
+                className="input-field mt-1"
+                value={newHolidayDate}
+                onChange={(e) => setNewHolidayDate(e.target.value)}
+              />
+            </label>
+            <button type="button" className="btn-secondary" onClick={addHolidayDate}>
+              <Plus className="h-4 w-4" />
+              Ajouter
             </button>
           </div>
+          {holidayDates.length > 0 ? (
+            <ul className="flex flex-wrap gap-2">
+              {holidayDates.map((d) => (
+                <li
+                  key={d}
+                  className="inline-flex items-center gap-1 rounded-lg bg-white border border-slate-200 px-2 py-1 text-sm"
+                >
+                  {format(parseISO(d), "d MMM yyyy", { locale: fr })}
+                  <button
+                    type="button"
+                    className="text-rose-600 p-1"
+                    onClick={() =>
+                      setHolidayDates((prev) => prev.filter((x) => x !== d))
+                    }
+                    aria-label="Retirer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Aucun férié : laissez vide ou ajoutez chaque date (ex. fête du Canada).
+            </p>
+          )}
         </div>
-        {error && (
-          <p className="text-sm text-rose-600">{error}</p>
-        )}
+
+        <button
+          type="button"
+          className="btn-primary w-full sm:w-auto"
+          disabled={loading || !from || !to || !actorId}
+          onClick={loadReport}
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Calculer
+        </button>
+        {error && <p className="text-sm text-rose-600">{error}</p>}
       </div>
 
       {report && (
@@ -153,8 +200,8 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
             <p className="text-sm text-slate-500">
               {format(parseISO(report.from), "d MMM yyyy", { locale: fr })} →{" "}
               {format(parseISO(report.to), "d MMM yyyy", { locale: fr })} ·{" "}
-              {report.daysWithJournal} jour(s) saisi(s) · {report.statutoryHolidayCount}{" "}
-              férié(s)
+              {report.daysWithJournal} jour(s) saisi(s) dans la période ·{" "}
+              {report.statutoryHolidayDates.length} férié(s) saisi(s)
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4 space-y-1 text-sm">
@@ -174,7 +221,7 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
                 <p>Indemnités vacances : {formatCad(report.expenses.vacationIndemnityCents)}</p>
                 <p>Maladie (0,8 %) : {formatCad(report.expenses.sickLeaveIndemnityCents)}</p>
                 <p>
-                  Jours fériés (estim.) :{" "}
+                  Jours fériés (1/20 × 4 sem.) :{" "}
                   {formatCad(report.expenses.statutoryHolidayCents)}
                 </p>
                 <p>Autres (journal) : {formatCad(report.expenses.otherDailyCents)}</p>
@@ -196,24 +243,48 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
             </div>
           </div>
 
-          {report.holidayIndemnities.length > 0 && (
-            <div className="card">
-              <h3 className="font-semibold text-slate-800 mb-2">
-                Détail indemnités jours fériés
+          {report.holidayIndemnityLines.length > 0 && (
+            <div className="card overflow-x-auto">
+              <h3 className="font-semibold text-slate-800 mb-3">
+                Détail indemnités jours fériés (Québec)
               </h3>
-              <ul className="text-sm space-y-1">
-                {report.holidayIndemnities.map((h) => (
-                  <li key={h.educatorId} className="flex justify-between gap-2">
-                    <span>
-                      {h.educatorName}{" "}
-                      <span className="text-slate-500">
-                        ({h.method === "one_twentieth" ? "1/20" : "moy. jour"})
-                      </span>
-                    </span>
-                    <span className="font-medium">{formatCad(h.indemnityCents)}</span>
-                  </li>
-                ))}
-              </ul>
+              <table className="w-full text-sm min-w-[520px]">
+                <thead>
+                  <tr className="text-left text-slate-500 border-b">
+                    <th className="py-2 pr-2">Employée</th>
+                    <th className="py-2 pr-2">Férié</th>
+                    <th className="py-2 pr-2">Salaire ref. (4 sem.)</th>
+                    <th className="py-2 pr-2">Période ref.</th>
+                    <th className="py-2 text-right">Indemnité</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.holidayIndemnityLines.map((h, i) => (
+                    <tr key={`${h.educatorId}-${h.holidayDate}-${i}`} className="border-b border-slate-50">
+                      <td className="py-2 pr-2">{h.educatorName}</td>
+                      <td className="py-2 pr-2 whitespace-nowrap">
+                        {format(parseISO(h.holidayDate), "d MMM yyyy", { locale: fr })}
+                      </td>
+                      <td className="py-2 pr-2">
+                        {formatCad(h.referenceGrossCents)}
+                        <span className="text-slate-400 text-xs ml-1">
+                          ({h.referenceDaysWorked} j.)
+                        </span>
+                      </td>
+                      <td className="py-2 pr-2 text-xs text-slate-600 whitespace-nowrap">
+                        {h.referenceFrom} → {h.referenceTo}
+                      </td>
+                      <td className="py-2 text-right font-medium">
+                        {formatCad(h.indemnityCents)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-slate-500 mt-2">
+                Formule : salaire brut des 4 semaines avant la semaine du férié ÷ 20
+                (par férié et par employée).
+              </p>
             </div>
           )}
 

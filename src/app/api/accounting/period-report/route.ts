@@ -3,12 +3,24 @@ import { findAccountingActor } from "@/lib/accounting-staff";
 import { buildPeriodReport } from "@/lib/accounting-period-report";
 import { getEducators } from "@/lib/store";
 
+function parseHolidayDatesParam(raw: string | null): string[] {
+  if (!raw?.trim()) return [];
+  return raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s));
+}
+
 export async function GET(request: NextRequest) {
   try {
     const from = request.nextUrl.searchParams.get("from")?.trim() ?? "";
     const to = request.nextUrl.searchParams.get("to")?.trim() ?? "";
-    const holidaysRaw = request.nextUrl.searchParams.get("statutoryHolidays");
     const actorId = request.nextUrl.searchParams.get("_actorEducatorId")?.trim();
+
+    const datesParam =
+      request.nextUrl.searchParams.get("statutoryHolidayDates") ??
+      request.nextUrl.searchParams.get("holidayDates");
+    const statutoryHolidayDates = parseHolidayDatesParam(datesParam);
 
     const educators = await getEducators();
     if (!findAccountingActor(educators, actorId)) {
@@ -22,16 +34,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const statutoryHolidayCount = holidaysRaw
-      ? parseInt(holidaysRaw, 10)
-      : 0;
-
     const report = await buildPeriodReport({
       fromStr: from,
       toStr: to,
-      statutoryHolidayCount: Number.isFinite(statutoryHolidayCount)
-        ? statutoryHolidayCount
-        : 0,
+      statutoryHolidayDates,
     });
 
     return NextResponse.json(report);
