@@ -11,6 +11,58 @@ export interface Educator {
   isQualified?: boolean;
   /** Hash du mot de passe (jamais exposé au client) */
   passwordHash?: string;
+  /** Taux horaire (cents) pour la paie journalière */
+  hourlyRateCents?: number;
+  /** Cotisations employeur (% du brut) */
+  employerContributionPercent?: number;
+}
+
+export interface AccountingConfig {
+  dailyChildRateCents: number;
+  defaultEmployerContributionPercent: number;
+  updatedAt?: string;
+}
+
+export type JournalLineCategory =
+  | "revenue_enrollment"
+  | "revenue_other"
+  | "expense_educator_gross"
+  | "expense_employer_cotisation"
+  | "expense_other";
+
+export interface JournalLine {
+  id: string;
+  kind: "expense" | "revenue";
+  category: JournalLineCategory;
+  label?: string;
+  amountCents: number;
+  educatorId?: string;
+  educatorName?: string;
+  hoursWorked?: number;
+  hourlyRateCents?: number;
+  employerContributionPercent?: number;
+  childCount?: number;
+  dailyRateCents?: number;
+  sortOrder?: number;
+}
+
+export interface DailyJournal {
+  id: string;
+  journalDate: string;
+  notes?: string;
+  updatedById: string;
+  updatedByName: string;
+  createdAt: string;
+  updatedAt: string;
+  lines: JournalLine[];
+}
+
+export interface EducatorPaySummary {
+  id: string;
+  name: string;
+  role: Educator["role"];
+  hourlyRateCents?: number;
+  employerContributionPercent?: number;
 }
 
 export interface VacationRequest {

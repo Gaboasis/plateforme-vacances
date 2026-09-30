@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -19,6 +20,7 @@ import {
   LogIn,
   ArrowLeftRight,
   Ban,
+  Wallet,
 } from "lucide-react";
 import type {
   VacationRequest,
@@ -919,6 +921,15 @@ export default function AdminPage() {
           <Users className="h-4 w-4" />
           Éducatrices
         </button>
+        )}
+        {!inboxOnly && (
+          <Link
+            href="/admin/comptabilite"
+            className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-4 py-3 text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:border-emerald-300 whitespace-nowrap"
+          >
+            <Wallet className="h-4 w-4" />
+            Comptabilité
+          </Link>
         )}
       </div>
 

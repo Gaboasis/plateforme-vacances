@@ -132,14 +132,30 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
     }
 
-    const { id, newPassword, ...updates } = body;
+    const { id, newPassword, hourlyRateCents, employerContributionPercent, ...updates } =
+      body;
     if (!id) {
       return NextResponse.json({ error: "ID manquant" }, { status: 400 });
     }
     if (newPassword) {
       updates.passwordHash = hashPassword(newPassword);
     }
-    const updated = await updateEducator(id, updates as Partial<Educator>);
+    const patch = updates as Partial<Educator>;
+    if (hourlyRateCents != null) {
+      const cents =
+        typeof hourlyRateCents === "number"
+          ? hourlyRateCents
+          : parseInt(String(hourlyRateCents), 10);
+      if (Number.isFinite(cents)) patch.hourlyRateCents = cents;
+    }
+    if (employerContributionPercent != null) {
+      const pct =
+        typeof employerContributionPercent === "number"
+          ? employerContributionPercent
+          : parseFloat(String(employerContributionPercent));
+      if (Number.isFinite(pct)) patch.employerContributionPercent = pct;
+    }
+    const updated = await updateEducator(id, patch);
     if (!updated) {
       return NextResponse.json({ error: "Éducatrice introuvable" }, {
         status: 404,

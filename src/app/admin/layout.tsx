@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Calendar, LogOut, Home, Shield } from "lucide-react";
+import { LogOut, Home, Shield, Wallet } from "lucide-react";
 import type { Educator } from "@/types";
 
 export default function AdminLayout({
@@ -68,6 +68,14 @@ export default function AdminLayout({
           </Link>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+            <Link
+              href="/admin/comptabilite"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors"
+              title="Comptabilité"
+            >
+              <Wallet className="h-4 w-4" />
+              <span className="hidden sm:inline">Comptabilité</span>
+            </Link>
             <div className="flex items-center gap-1.5 sm:gap-2 text-right">
               <div className="relative inline-flex">
                 <div className="rounded-full bg-coral-100 px-2 py-0.5 text-xs font-medium text-coral-700">

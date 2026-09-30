@@ -1,5 +1,9 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import {
+  DEFAULT_EMPLOYER_CONTRIBUTION_PERCENT,
+  DEFAULT_HOURLY_RATE_CENTS,
+} from "../src/lib/default-hourly-rates";
 
 const prisma = new PrismaClient();
 
@@ -190,7 +194,36 @@ async function main() {
 
   await archiveDepartedEducators(["6"]);
 
+  await ensureAccountingSeed();
+
   console.log("Seed terminé ✓");
+}
+
+async function ensureAccountingSeed() {
+  await prisma.accountingConfig.upsert({
+    where: { id: "default" },
+    create: {
+      id: "default",
+      dailyChildRateCents: 4500,
+      defaultEmployerContributionPercent: DEFAULT_EMPLOYER_CONTRIBUTION_PERCENT,
+    },
+    update: {},
+  });
+
+  for (const [id, hourlyRateCents] of Object.entries(DEFAULT_HOURLY_RATE_CENTS)) {
+    const edu = await prisma.educator.findUnique({ where: { id } });
+    if (!edu) continue;
+    if (edu.hourlyRateCents == null) {
+      await prisma.educator.update({
+        where: { id },
+        data: {
+          hourlyRateCents,
+          employerContributionPercent:
+            edu.employerContributionPercent ?? DEFAULT_EMPLOYER_CONTRIBUTION_PERCENT,
+        },
+      });
+    }
+  }
 }
 
 /** Employé·es partis·es : transfère l’historique vers admin et supprime le compte. */

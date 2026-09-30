@@ -15,8 +15,48 @@ model Educator {
   seniorityRank Int?
   isQualified   Boolean?
   passwordHash  String?
+  hourlyRateCents Int? // cents, ex. 2550 = 25,50 $
+  employerContributionPercent Float? // % du salaire brut (cotisations employeur)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model AccountingConfig {
+  id                              String   @id @default("default")
+  dailyChildRateCents             Int      @default(4500)
+  defaultEmployerContributionPercent Float @default(18)
+  updatedAt                       DateTime @updatedAt
+}
+
+model DailyJournal {
+  id            String        @id @default(cuid())
+  journalDate   DateTime      @unique @db.Date
+  notes         String?       @db.Text
+  updatedById   String
+  updatedByName String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  lines         JournalLine[]
+}
+
+model JournalLine {
+  id                          String       @id @default(cuid())
+  journalId                   String
+  journal                     DailyJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  kind                        String       // "expense" | "revenue"
+  category                    String       // revenue_enrollment | revenue_other | expense_educator_gross | expense_employer_cotisation | expense_other
+  label                       String?
+  amountCents                 Int
+  educatorId                  String?
+  educatorName                String?
+  hoursWorked                 Float?
+  hourlyRateCents             Int?
+  employerContributionPercent Float?
+  childCount                  Int?
+  dailyRateCents              Int?
+  sortOrder                   Int          @default(0)
+
+  @@index([journalId])
 }
 
 model VacationRequest {

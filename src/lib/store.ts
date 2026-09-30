@@ -17,6 +17,8 @@ function educatorToType(edu: {
   seniorityRank: number | null;
   isQualified: boolean | null;
   passwordHash: string | null;
+  hourlyRateCents?: number | null;
+  employerContributionPercent?: number | null;
 }): Educator {
   return {
     id: edu.id,
@@ -25,6 +27,8 @@ function educatorToType(edu: {
     role: edu.role as "educatrice" | "admin" | "cuisiniere" | "entretien" | "secretaire",
     seniorityRank: edu.seniorityRank ?? undefined,
     isQualified: edu.isQualified ?? undefined,
+    hourlyRateCents: edu.hourlyRateCents ?? undefined,
+    employerContributionPercent: edu.employerContributionPercent ?? undefined,
     passwordHash: edu.passwordHash ?? undefined,
   };
 }
@@ -82,6 +86,15 @@ export async function updateEducator(id: string, updates: Partial<Educator>) {
   if (updates.seniorityRank != null) data.seniorityRank = updates.seniorityRank;
   if (updates.isQualified != null) data.isQualified = updates.isQualified;
   if (updates.passwordHash != null) data.passwordHash = updates.passwordHash;
+  if (updates.hourlyRateCents != null) {
+    data.hourlyRateCents = Math.max(0, Math.round(updates.hourlyRateCents));
+  }
+  if (updates.employerContributionPercent != null) {
+    data.employerContributionPercent = Math.max(
+      0,
+      updates.employerContributionPercent
+    );
+  }
 
   const updated = await prisma.educator.update({
     where: { id },
