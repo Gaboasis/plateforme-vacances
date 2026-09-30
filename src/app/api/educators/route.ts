@@ -132,8 +132,14 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
     }
 
-    const { id, newPassword, hourlyRateCents, employerContributionPercent, ...updates } =
-      body;
+    const {
+      id,
+      newPassword,
+      hourlyRateCents,
+      employerContributionPercent,
+      vacationIndemnityPercent,
+      ...updates
+    } = body;
     if (!id) {
       return NextResponse.json({ error: "ID manquant" }, { status: 400 });
     }
@@ -154,6 +160,13 @@ export async function PATCH(request: NextRequest) {
           ? employerContributionPercent
           : parseFloat(String(employerContributionPercent));
       if (Number.isFinite(pct)) patch.employerContributionPercent = pct;
+    }
+    if (vacationIndemnityPercent != null) {
+      const v =
+        typeof vacationIndemnityPercent === "number"
+          ? vacationIndemnityPercent
+          : parseInt(String(vacationIndemnityPercent), 10);
+      if (v === 4 || v === 6) patch.vacationIndemnityPercent = v;
     }
     const updated = await updateEducator(id, patch);
     if (!updated) {

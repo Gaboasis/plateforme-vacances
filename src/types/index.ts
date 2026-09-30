@@ -15,6 +15,8 @@ export interface Educator {
   hourlyRateCents?: number;
   /** Cotisations employeur (% du brut) */
   employerContributionPercent?: number;
+  /** Indemnité vacances : 4 ou 6 % du brut */
+  vacationIndemnityPercent?: 4 | 6;
 }
 
 export type EmployerContributionMethod = "quebec_statutory" | "flat_percent";
@@ -31,6 +33,7 @@ export interface AccountingConfig {
   qcRqapEmployerPercent: number;
   qcFssEmployerPercent: number;
   qcCnesstEmployerPercent: number;
+  sickLeaveIndemnityPercent: number;
   updatedAt?: string;
 }
 
@@ -38,9 +41,13 @@ export type JournalLineCategory =
   | "revenue_enrollment"
   | "revenue_enrollment_infant"
   | "revenue_enrollment_over18"
+  | "revenue_sortie"
+  | "revenue_photo"
   | "revenue_other"
   | "expense_educator_gross"
   | "expense_employer_cotisation"
+  | "expense_vacation_indemnity"
+  | "expense_sick_leave_indemnity"
   | "expense_other";
 
 export interface JournalLine {
@@ -76,6 +83,17 @@ export interface EducatorPaySummary {
   role: Educator["role"];
   hourlyRateCents?: number;
   employerContributionPercent?: number;
+  vacationIndemnityPercent: 4 | 6;
+}
+
+export interface FixedExpenseEntry {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  label: string;
+  amountCents: number;
+  sourceName?: string;
+  note?: string;
 }
 
 export interface VacationRequest {

@@ -1,0 +1,20 @@
+/** Catégories inspirées du budget trimestriel GAB (feuille Dépenses fixes). */
+export const FIXED_EXPENSE_SUGGESTIONS: string[] = [
+  "Intérêts sur prêt bancaire",
+  "Remboursement du capital du prêt",
+  "Manger, produits de cuisine, d'entretien et de nettoyage",
+  "Lait",
+  "Télécommunications Bell",
+  "Assurance",
+  "Quatre Vents Éducatrice spécialisée",
+  "Hydro Québec / Énergir",
+  "Frais bancaires",
+  "Logiciel Toshiba",
+  "Logiciel Acceo",
+  "Déneigement",
+  "Sorties d'amusement",
+  "Chauffeur autobus / autobus",
+  "Autres dépenses",
+  "Matériel pédagogique",
+  "Logiciel Amigest",
+];

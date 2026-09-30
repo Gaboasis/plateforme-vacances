@@ -42,11 +42,9 @@ function getStaffNotifyConfig():
 async function sendStaffEmail(subject: string, html: string): Promise<void> {
   const cfg = getStaffNotifyConfig();
   if (!cfg) {
-    if (process.env.NODE_ENV === "development") {
-      console.warn(
-        "[staff-notify] E-mail non envoyé : STAFF_NOTIFY_EMAIL, NOTIFY_FROM_EMAIL ou RESEND_API_KEY manquant."
-      );
-    }
+    console.error(
+      "[staff-notify] E-mail non envoyé : vérifiez STAFF_NOTIFY_EMAIL, NOTIFY_FROM_EMAIL et RESEND_API_KEY sur Railway."
+    );
     return;
   }
 
@@ -66,8 +64,13 @@ async function sendStaffEmail(subject: string, html: string): Promise<void> {
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    console.error(
+      `[staff-notify] Resend a refusé l'envoi (${res.status}) vers ${cfg.to} : ${body.slice(0, 400)}`
+    );
     throw new Error(`Resend ${res.status}: ${body.slice(0, 300)}`);
   }
+
+  console.info(`[staff-notify] E-mail envoyé à ${cfg.to} — ${subject}`);
 }
 
 function inboxLinks(appUrl: string): string {

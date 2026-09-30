@@ -1838,6 +1838,38 @@ export default function AdminPage() {
                         )}
                       </select>
                     </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600">
+                        Indemnité vacances (% brut)
+                      </label>
+                      <select
+                        value={edu.vacationIndemnityPercent === 6 ? 6 : 4}
+                        onChange={async (e) => {
+                          const v = parseInt(e.target.value, 10) === 6 ? 6 : 4;
+                          const actor = getStaffActorId();
+                          if (!actor) return;
+                          const res = await fetch("/api/educators", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              id: edu.id,
+                              vacationIndemnityPercent: v,
+                              _actorEducatorId: actor,
+                            }),
+                          });
+                          if (res.ok) {
+                            const updated = await res.json();
+                            setEducatorsList((prev) =>
+                              prev.map((x) => (x.id === edu.id ? updated : x))
+                            );
+                          }
+                        }}
+                        className="input-field text-sm"
+                      >
+                        <option value={4}>4 %</option>
+                        <option value={6}>6 %</option>
+                      </select>
+                    </div>
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"

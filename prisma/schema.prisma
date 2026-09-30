@@ -17,6 +17,7 @@ model Educator {
   passwordHash  String?
   hourlyRateCents Int? // cents, ex. 2550 = 25,50 $
   employerContributionPercent Float? // % du salaire brut (cotisations employeur)
+  vacationIndemnityPercent Float? @default(4) // 4 ou 6 — indemnité vacances sur brut
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -33,7 +34,22 @@ model AccountingConfig {
   qcRqapEmployerPercent           Float    @default(0.602)
   qcFssEmployerPercent              Float    @default(1.65)
   qcCnesstEmployerPercent         Float    @default(1.15)
+  sickLeaveIndemnityPercent       Float    @default(0.8) // provision maladie sur brut
   updatedAt                       DateTime @updatedAt
+}
+
+model FixedExpenseEntry {
+  id           String   @id @default(cuid())
+  periodStart  DateTime @db.Date
+  periodEnd    DateTime @db.Date
+  label        String
+  amountCents  Int
+  sourceName   String?
+  note         String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([periodStart, periodEnd])
 }
 
 model DailyJournal {

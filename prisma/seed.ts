@@ -214,6 +214,7 @@ async function ensureAccountingSeed() {
       qcRqapEmployerPercent: 0.602,
       qcFssEmployerPercent: 1.65,
       qcCnesstEmployerPercent: 1.15,
+      sickLeaveIndemnityPercent: 0.8,
     },
     update: {},
   });

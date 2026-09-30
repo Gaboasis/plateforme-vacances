@@ -22,7 +22,10 @@ import {
   TrendingDown,
   Clock,
   Settings2,
+  BarChart3,
+  CalendarDays,
 } from "lucide-react";
+import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
 import type {
   AccountingConfig,
   DailyJournal,
@@ -39,6 +42,10 @@ import {
   computeEmployerCotisationForJournal,
   QUEBEC_EMPLOYER_RATES_2026,
 } from "@/lib/quebec-employer-contributions";
+import {
+  indemnityCentsFromGross,
+  normalizeVacationIndemnityPercent,
+} from "@/lib/payroll-indemnities";
 
 type DraftLine = Omit<JournalLine, "id"> & { clientId: string };
 
@@ -66,7 +73,23 @@ function normalizeAccountingConfig(raw: Partial<AccountingConfig> | null): Accou
     qcFssEmployerPercent: raw?.qcFssEmployerPercent ?? QUEBEC_EMPLOYER_RATES_2026.fssPercent,
     qcCnesstEmployerPercent:
       raw?.qcCnesstEmployerPercent ?? QUEBEC_EMPLOYER_RATES_2026.cnesstPercent,
+    sickLeaveIndemnityPercent: raw?.sickLeaveIndemnityPercent ?? 0.8,
     updatedAt: raw?.updatedAt,
+  };
+}
+
+function defaultPayrollConfig(): AccountingConfig {
+  return {
+    dailyInfantRateCents: 5200,
+    dailyOver18RateCents: 4500,
+    employerContributionMethod: "quebec_statutory",
+    defaultEmployerContributionPercent: 18,
+    qcRrqEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rrqPercent,
+    qcAeEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.aePercent,
+    qcRqapEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rqapPercent,
+    qcFssEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.fssPercent,
+    qcCnesstEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.cnesstPercent,
+    sickLeaveIndemnityPercent: 0.8,
   };
 }
 
@@ -78,6 +101,7 @@ function enrollmentTotalCents(countStr: string, rateInput: string): number {
 }
 
 export default function ComptabilitePage() {
+  const [mainView, setMainView] = useState<"journal" | "period">("journal");
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [config, setConfig] = useState<AccountingConfig | null>(null);
   const [payRates, setPayRates] = useState<EducatorPaySummary[]>([]);
@@ -87,6 +111,8 @@ export default function ComptabilitePage() {
   const [infantRateInput, setInfantRateInput] = useState("");
   const [over18Count, setOver18Count] = useState("");
   const [over18RateInput, setOver18RateInput] = useState("");
+  const [sortieAmount, setSortieAmount] = useState("");
+  const [photoAmount, setPhotoAmount] = useState("");
   const [hoursDraft, setHoursDraft] = useState<Record<string, string>>({});
   const [otherRevenueLabel, setOtherRevenueLabel] = useState("");
   const [otherRevenueAmount, setOtherRevenueAmount] = useState("");
@@ -140,10 +166,7 @@ export default function ComptabilitePage() {
         setNotes(journal.notes ?? "");
         setLines(
           journal.lines
-            .filter(
-              (l) =>
-                l.category === "revenue_other" || l.category === "expense_other"
-            )
+            .filter((l) => l.category === "revenue_other" || l.category === "expense_other")
             .map((l) => ({
               ...l,
               clientId: l.id,
@@ -177,6 +200,14 @@ export default function ComptabilitePage() {
         } else {
           setOver18Count("");
         }
+        const sortieLine = journal.lines.find((l) => l.category === "revenue_sortie");
+        const photoLine = journal.lines.find((l) => l.category === "revenue_photo");
+        setSortieAmount(
+          sortieLine ? String(centsToDollars(sortieLine.amountCents)) : ""
+        );
+        setPhotoAmount(
+          photoLine ? String(centsToDollars(photoLine.amountCents)) : ""
+        );
         const hours: Record<string, string> = {};
         for (const l of journal.lines) {
           if (
@@ -193,6 +224,8 @@ export default function ComptabilitePage() {
         setLines([]);
         setInfantCount("");
         setOver18Count("");
+        setSortieAmount("");
+        setPhotoAmount("");
         setHoursDraft({});
       }
 
@@ -235,17 +268,7 @@ export default function ComptabilitePage() {
       const rate = edu.hourlyRateCents ?? 0;
       if (rate <= 0) continue;
       const gross = computeGrossFromHours(hours, rate);
-      const cfg = config ?? {
-        dailyInfantRateCents: 5200,
-        dailyOver18RateCents: 4500,
-        employerContributionMethod: "quebec_statutory" as const,
-        defaultEmployerContributionPercent: 18,
-        qcRrqEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rrqPercent,
-        qcAeEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.aePercent,
-        qcRqapEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rqapPercent,
-        qcFssEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.fssPercent,
-        qcCnesstEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.cnesstPercent,
-      };
+      const cfg = config ?? defaultPayrollConfig();
       const cot = computeEmployerCotisationForJournal(
         gross,
         cfg,
@@ -279,6 +302,38 @@ export default function ComptabilitePage() {
           hoursWorked: hours,
           hourlyRateCents: rate,
           employerContributionPercent: cot.effectivePercent,
+        });
+      }
+      const vacPct = normalizeVacationIndemnityPercent(edu.vacationIndemnityPercent);
+      const vacCents = indemnityCentsFromGross(gross, vacPct);
+      if (vacCents > 0) {
+        out.push({
+          clientId: `pay-vac-${edu.id}`,
+          kind: "expense",
+          category: "expense_vacation_indemnity",
+          label: `Indemnité vacances (${vacPct} %) — ${edu.name}`,
+          amountCents: vacCents,
+          educatorId: edu.id,
+          educatorName: edu.name,
+          hoursWorked: hours,
+          hourlyRateCents: rate,
+          employerContributionPercent: vacPct,
+        });
+      }
+      const sickPct = cfg.sickLeaveIndemnityPercent ?? 0.8;
+      const sickCents = indemnityCentsFromGross(gross, sickPct);
+      if (sickCents > 0) {
+        out.push({
+          clientId: `pay-sick-${edu.id}`,
+          kind: "expense",
+          category: "expense_sick_leave_indemnity",
+          label: `Provision maladie (${sickPct} %) — ${edu.name}`,
+          amountCents: sickCents,
+          educatorId: edu.id,
+          educatorName: edu.name,
+          hoursWorked: hours,
+          hourlyRateCents: rate,
+          employerContributionPercent: sickPct,
         });
       }
     }
@@ -318,6 +373,26 @@ export default function ComptabilitePage() {
         dailyRateCents: parseCadInput(over18RateInput || "0"),
       });
     }
+    const sortieCents = parseCadInput(sortieAmount || "0");
+    if (sortieCents > 0) {
+      built.push({
+        clientId: "revenue-sortie",
+        kind: "revenue",
+        category: "revenue_sortie",
+        label: "Sortie",
+        amountCents: sortieCents,
+      });
+    }
+    const photoCents = parseCadInput(photoAmount || "0");
+    if (photoCents > 0) {
+      built.push({
+        clientId: "revenue-photo",
+        kind: "revenue",
+        category: "revenue_photo",
+        label: "Photo",
+        amountCents: photoCents,
+      });
+    }
     built.push(...manualLines);
     built.push(...payrollLines);
     return built;
@@ -328,6 +403,8 @@ export default function ComptabilitePage() {
     over18Count,
     infantRateInput,
     over18RateInput,
+    sortieAmount,
+    photoAmount,
     manualLines,
     payrollLines,
   ]);
@@ -431,6 +508,24 @@ export default function ComptabilitePage() {
     }
   };
 
+  const saveVacationPercent = async (eduId: string, percent: 4 | 6) => {
+    if (!actorId) return;
+    await fetch("/api/educators", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: eduId,
+        vacationIndemnityPercent: percent,
+        _actorEducatorId: actorId,
+      }),
+    });
+    setPayRates((prev) =>
+      prev.map((e) =>
+        e.id === eduId ? { ...e, vacationIndemnityPercent: percent } : e
+      )
+    );
+  };
+
   const savePayRate = async (eduId: string, hourlyDollars: string) => {
     if (!actorId) return;
     const cents = parseCadInput(hourlyDollars);
@@ -470,16 +565,49 @@ export default function ComptabilitePage() {
           <Wallet className="h-6 w-6 text-primary-500" />
           Journal du jour
         </h1>
+        {mainView === "journal" && (
+          <button
+            type="button"
+            onClick={() => setShowSettings((s) => !s)}
+            className="ml-auto inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            <Settings2 className="h-4 w-4" />
+            Tarifs
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-2 border-b border-slate-200 pb-1">
         <button
           type="button"
-          onClick={() => setShowSettings((s) => !s)}
-          className="ml-auto inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+          onClick={() => setMainView("journal")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            mainView === "journal"
+              ? "border-primary-500 text-primary-700"
+              : "border-transparent text-slate-500"
+          }`}
         >
-          <Settings2 className="h-4 w-4" />
-          Tarifs
+          <CalendarDays className="h-4 w-4" />
+          Journal du jour
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainView("period")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            mainView === "period"
+              ? "border-primary-500 text-primary-700"
+              : "border-transparent text-slate-500"
+          }`}
+        >
+          <BarChart3 className="h-4 w-4" />
+          Analyse période
         </button>
       </div>
 
+      {mainView === "period" && <PeriodAnalysisPanel actorId={actorId} />}
+
+      {mainView === "journal" && (
+        <>
       <div className="card flex flex-wrap items-center justify-between gap-3 !p-4">
         <button
           type="button"
@@ -651,6 +779,19 @@ export default function ComptabilitePage() {
                     onBlur={(ev) => savePayRate(e.id, ev.target.value)}
                   />
                   <span className="text-slate-500">$/h</span>
+                  <select
+                    className="input-field !py-2 !min-h-0 w-20"
+                    value={e.vacationIndemnityPercent}
+                    onChange={(ev) =>
+                      saveVacationPercent(
+                        e.id,
+                        parseInt(ev.target.value, 10) === 6 ? 6 : 4
+                      )
+                    }
+                  >
+                    <option value={4}>Vac. 4%</option>
+                    <option value={6}>Vac. 6%</option>
+                  </select>
                 </div>
               ))}
             </div>
@@ -772,6 +913,28 @@ export default function ComptabilitePage() {
                 </div>
               </div>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm block">
+                <span className="text-slate-600">Sortie ($)</span>
+                <input
+                  className="input-field mt-1"
+                  inputMode="decimal"
+                  value={sortieAmount}
+                  onChange={(e) => setSortieAmount(e.target.value)}
+                  placeholder="Revenu sortie du jour"
+                />
+              </label>
+              <label className="text-sm block">
+                <span className="text-slate-600">Photo ($)</span>
+                <input
+                  className="input-field mt-1"
+                  inputMode="decimal"
+                  value={photoAmount}
+                  onChange={(e) => setPhotoAmount(e.target.value)}
+                  placeholder="Revenu photos du jour"
+                />
+              </label>
+            </div>
             <div className="flex flex-wrap gap-2 items-end">
               <label className="text-sm flex-1 min-w-[140px]">
                 <span className="text-slate-600">Autre revenu</span>
@@ -824,8 +987,8 @@ export default function ComptabilitePage() {
             </h2>
             <p className="text-sm text-slate-600">
               Entrez les heures travaillées : le <strong>salaire brut</strong> du jour
-              sert de base aux cotisations employeur (RRQ, AE, RQAP, FSS, CNESST au
-              Québec — voir <strong>Tarifs</strong>).
+              sert de base aux cotisations employeur (RRQ, AE, RQAP, FSS, CNESST), à
+              l&apos;indemnité vacances (4 % ou 6 %) et à la provision maladie (0,8 %).
             </p>
             <div className="space-y-2">
               {payRates.length === 0 ? (
@@ -839,17 +1002,10 @@ export default function ComptabilitePage() {
                     Number.isFinite(hours) && hours > 0 && rate > 0
                       ? computeGrossFromHours(hours, rate)
                       : 0;
-                  const cfg = config ?? {
-                    dailyInfantRateCents: 5200,
-                    dailyOver18RateCents: 4500,
-                    employerContributionMethod: "quebec_statutory" as const,
-                    defaultEmployerContributionPercent: 18,
-                    qcRrqEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rrqPercent,
-                    qcAeEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.aePercent,
-                    qcRqapEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rqapPercent,
-                    qcFssEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.fssPercent,
-                    qcCnesstEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.cnesstPercent,
-                  };
+                  const cfg = config ?? defaultPayrollConfig();
+                  const vacPct = normalizeVacationIndemnityPercent(
+                    edu.vacationIndemnityPercent
+                  );
                   const cotResult =
                     gross > 0
                       ? computeEmployerCotisationForJournal(
@@ -858,6 +1014,15 @@ export default function ComptabilitePage() {
                           edu.employerContributionPercent
                         )
                       : null;
+                  const vacCents =
+                    gross > 0 ? indemnityCentsFromGross(gross, vacPct) : 0;
+                  const sickCents =
+                    gross > 0
+                      ? indemnityCentsFromGross(
+                          gross,
+                          cfg.sickLeaveIndemnityPercent ?? 0.8
+                        )
+                      : 0;
                   return (
                     <div
                       key={edu.id}
@@ -907,6 +1072,12 @@ export default function ComptabilitePage() {
                                   </span>
                                 )}
                               </>
+                            )}
+                            {vacCents > 0 && (
+                              <span className="block text-[11px] text-slate-500">
+                                Vacances {vacPct} % : {formatCad(vacCents)} · Maladie 0,8
+                                % : {formatCad(sickCents)}
+                              </span>
                             )}
                           </>
                         ) : (
@@ -1032,6 +1203,8 @@ export default function ComptabilitePage() {
           </button>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

@@ -19,6 +19,7 @@ function educatorToType(edu: {
   passwordHash: string | null;
   hourlyRateCents?: number | null;
   employerContributionPercent?: number | null;
+  vacationIndemnityPercent?: number | null;
 }): Educator {
   return {
     id: edu.id,
@@ -29,6 +30,8 @@ function educatorToType(edu: {
     isQualified: edu.isQualified ?? undefined,
     hourlyRateCents: edu.hourlyRateCents ?? undefined,
     employerContributionPercent: edu.employerContributionPercent ?? undefined,
+    vacationIndemnityPercent:
+      edu.vacationIndemnityPercent === 6 ? 6 : edu.vacationIndemnityPercent === 4 ? 4 : undefined,
     passwordHash: edu.passwordHash ?? undefined,
   };
 }
@@ -94,6 +97,10 @@ export async function updateEducator(id: string, updates: Partial<Educator>) {
       0,
       updates.employerContributionPercent
     );
+  }
+  if (updates.vacationIndemnityPercent != null) {
+    data.vacationIndemnityPercent =
+      updates.vacationIndemnityPercent === 6 ? 6 : 4;
   }
 
   const updated = await prisma.educator.update({

@@ -82,6 +82,7 @@ function configFromRow(row: {
   qcRqapEmployerPercent: number;
   qcFssEmployerPercent: number;
   qcCnesstEmployerPercent: number;
+  sickLeaveIndemnityPercent: number;
   updatedAt: Date;
 }): AccountingConfig {
   const method =
@@ -99,6 +100,7 @@ function configFromRow(row: {
     qcRqapEmployerPercent: row.qcRqapEmployerPercent,
     qcFssEmployerPercent: row.qcFssEmployerPercent,
     qcCnesstEmployerPercent: row.qcCnesstEmployerPercent,
+    sickLeaveIndemnityPercent: row.sickLeaveIndemnityPercent,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -118,6 +120,7 @@ export async function ensureAccountingConfig(): Promise<AccountingConfig> {
       qcRqapEmployerPercent: 0.602,
       qcFssEmployerPercent: 1.65,
       qcCnesstEmployerPercent: 1.15,
+      sickLeaveIndemnityPercent: 0.8,
     },
     update: {},
   });
@@ -168,6 +171,12 @@ export async function setAccountingConfig(
       data[key] = Math.max(0, val);
     }
   }
+  if (updates.sickLeaveIndemnityPercent != null) {
+    data.sickLeaveIndemnityPercent = Math.max(
+      0,
+      updates.sickLeaveIndemnityPercent
+    );
+  }
   const row = await prisma.accountingConfig.update({
     where: { id: "default" },
     data,
@@ -190,7 +199,62 @@ export async function getEducatorPaySummaries(): Promise<EducatorPaySummary[]> {
     hourlyRateCents: e.hourlyRateCents ?? undefined,
     employerContributionPercent:
       e.employerContributionPercent ?? config.defaultEmployerContributionPercent,
+    vacationIndemnityPercent: e.vacationIndemnityPercent === 6 ? 6 : 4,
   }));
+}
+
+export async function listFixedExpensesForPeriod(
+  fromStr: string,
+  toStr: string
+) {
+  const from = parseJournalDate(fromStr);
+  const to = parseJournalDate(toStr);
+  const rows = await prisma.fixedExpenseEntry.findMany({
+    where: { periodStart: { lte: to }, periodEnd: { gte: from } },
+    orderBy: [{ label: "asc" }, { createdAt: "asc" }],
+  });
+  return rows.map((f) => ({
+    id: f.id,
+    periodStart: f.periodStart.toISOString().slice(0, 10),
+    periodEnd: f.periodEnd.toISOString().slice(0, 10),
+    label: f.label,
+    amountCents: f.amountCents,
+    sourceName: f.sourceName ?? undefined,
+    note: f.note ?? undefined,
+  }));
+}
+
+export async function createFixedExpenseEntry(data: {
+  periodStart: string;
+  periodEnd: string;
+  label: string;
+  amountCents: number;
+  sourceName?: string;
+  note?: string;
+}) {
+  const row = await prisma.fixedExpenseEntry.create({
+    data: {
+      periodStart: parseJournalDate(data.periodStart),
+      periodEnd: parseJournalDate(data.periodEnd),
+      label: data.label.trim(),
+      amountCents: Math.max(0, Math.round(data.amountCents)),
+      sourceName: data.sourceName?.trim() || null,
+      note: data.note?.trim() || null,
+    },
+  });
+  return {
+    id: row.id,
+    periodStart: row.periodStart.toISOString().slice(0, 10),
+    periodEnd: row.periodEnd.toISOString().slice(0, 10),
+    label: row.label,
+    amountCents: row.amountCents,
+    sourceName: row.sourceName ?? undefined,
+    note: row.note ?? undefined,
+  };
+}
+
+export async function deleteFixedExpenseEntry(id: string) {
+  await prisma.fixedExpenseEntry.delete({ where: { id } });
 }
 
 export async function getDailyJournal(dateStr: string): Promise<DailyJournal | null> {
