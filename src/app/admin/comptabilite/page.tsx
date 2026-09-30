@@ -31,11 +31,14 @@ import type {
 } from "@/types";
 import {
   centsToDollars,
-  computeEmployerContributionCents,
   computeGrossFromHours,
   formatCad,
   parseCadInput,
 } from "@/lib/money";
+import {
+  computeEmployerCotisationForJournal,
+  QUEBEC_EMPLOYER_RATES_2026,
+} from "@/lib/quebec-employer-contributions";
 
 type DraftLine = Omit<JournalLine, "id"> & { clientId: string };
 
@@ -45,6 +48,26 @@ function newClientId() {
 
 function todayIso() {
   return format(new Date(), "yyyy-MM-dd");
+}
+
+function normalizeAccountingConfig(raw: Partial<AccountingConfig> | null): AccountingConfig {
+  return {
+    dailyInfantRateCents: raw?.dailyInfantRateCents ?? 5200,
+    dailyOver18RateCents: raw?.dailyOver18RateCents ?? 4500,
+    dailyChildRateCents: raw?.dailyChildRateCents,
+    employerContributionMethod:
+      raw?.employerContributionMethod === "flat_percent"
+        ? "flat_percent"
+        : "quebec_statutory",
+    defaultEmployerContributionPercent: raw?.defaultEmployerContributionPercent ?? 18,
+    qcRrqEmployerPercent: raw?.qcRrqEmployerPercent ?? QUEBEC_EMPLOYER_RATES_2026.rrqPercent,
+    qcAeEmployerPercent: raw?.qcAeEmployerPercent ?? QUEBEC_EMPLOYER_RATES_2026.aePercent,
+    qcRqapEmployerPercent: raw?.qcRqapEmployerPercent ?? QUEBEC_EMPLOYER_RATES_2026.rqapPercent,
+    qcFssEmployerPercent: raw?.qcFssEmployerPercent ?? QUEBEC_EMPLOYER_RATES_2026.fssPercent,
+    qcCnesstEmployerPercent:
+      raw?.qcCnesstEmployerPercent ?? QUEBEC_EMPLOYER_RATES_2026.cnesstPercent,
+    updatedAt: raw?.updatedAt,
+  };
 }
 
 function enrollmentTotalCents(countStr: string, rateInput: string): number {
@@ -102,7 +125,7 @@ export default function ComptabilitePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Chargement impossible");
 
-      setConfig(data.config);
+      setConfig(normalizeAccountingConfig(data.config));
       setPayRates(Array.isArray(data.payRates) ? data.payRates : []);
       const cfg = data.config as AccountingConfig | undefined;
       setInfantRateInput(
@@ -212,11 +235,22 @@ export default function ComptabilitePage() {
       const rate = edu.hourlyRateCents ?? 0;
       if (rate <= 0) continue;
       const gross = computeGrossFromHours(hours, rate);
-      const pct =
-        edu.employerContributionPercent ??
-        config?.defaultEmployerContributionPercent ??
-        18;
-      const cotisation = computeEmployerContributionCents(gross, pct);
+      const cfg = config ?? {
+        dailyInfantRateCents: 5200,
+        dailyOver18RateCents: 4500,
+        employerContributionMethod: "quebec_statutory" as const,
+        defaultEmployerContributionPercent: 18,
+        qcRrqEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rrqPercent,
+        qcAeEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.aePercent,
+        qcRqapEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rqapPercent,
+        qcFssEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.fssPercent,
+        qcCnesstEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.cnesstPercent,
+      };
+      const cot = computeEmployerCotisationForJournal(
+        gross,
+        cfg,
+        edu.employerContributionPercent
+      );
       out.push({
         clientId: `pay-gross-${edu.id}`,
         kind: "expense",
@@ -227,20 +261,24 @@ export default function ComptabilitePage() {
         educatorName: edu.name,
         hoursWorked: hours,
         hourlyRateCents: rate,
-        employerContributionPercent: pct,
+        employerContributionPercent: cot.effectivePercent,
       });
-      if (cotisation > 0) {
+      if (cot.totalCents > 0) {
+        const cotLabel =
+          cfg.employerContributionMethod === "quebec_statutory"
+            ? `Cotisations employeur (QC) — ${edu.name}`
+            : `Cotisations employeur — ${edu.name}`;
         out.push({
           clientId: `pay-cot-${edu.id}`,
           kind: "expense",
           category: "expense_employer_cotisation",
-          label: `Cotisations employeur — ${edu.name}`,
-          amountCents: cotisation,
+          label: cotLabel,
+          amountCents: cot.totalCents,
           educatorId: edu.id,
           educatorName: edu.name,
           hoursWorked: hours,
           hourlyRateCents: rate,
-          employerContributionPercent: pct,
+          employerContributionPercent: cot.effectivePercent,
         });
       }
     }
@@ -378,12 +416,18 @@ export default function ComptabilitePage() {
         _actorEducatorId: actorId,
         dailyInfantRateCents: parseCadInput(infantRateInput || "0"),
         dailyOver18RateCents: parseCadInput(over18RateInput || "0"),
+        employerContributionMethod: config.employerContributionMethod,
         defaultEmployerContributionPercent: config.defaultEmployerContributionPercent,
+        qcRrqEmployerPercent: config.qcRrqEmployerPercent,
+        qcAeEmployerPercent: config.qcAeEmployerPercent,
+        qcRqapEmployerPercent: config.qcRqapEmployerPercent,
+        qcFssEmployerPercent: config.qcFssEmployerPercent,
+        qcCnesstEmployerPercent: config.qcCnesstEmployerPercent,
       }),
     });
     if (res.ok) {
       const c = await res.json();
-      setConfig(c);
+      setConfig(normalizeAccountingConfig(c));
     }
   };
 
@@ -501,23 +545,84 @@ export default function ComptabilitePage() {
                 inputMode="decimal"
               />
             </label>
-            <label className="block text-sm sm:col-span-2">
-              <span className="text-slate-600">
-                Cotisations employeur par défaut (%)
-              </span>
-              <input
-                className="input-field mt-1"
-                type="number"
-                step="0.1"
-                value={config.defaultEmployerContributionPercent}
-                onChange={(e) =>
-                  setConfig({
-                    ...config,
-                    defaultEmployerContributionPercent: parseFloat(e.target.value) || 0,
-                  })
-                }
-              />
-            </label>
+            <fieldset className="sm:col-span-2 space-y-2">
+              <legend className="text-sm font-medium text-slate-700">
+                Cotisations employeur (Québec)
+              </legend>
+              <p className="text-xs text-slate-500">
+                Base : salaire brut du jour. Taux 2026 pour RRQ, AE et RQAP ; ajustez FSS
+                et CNESST selon votre garderie.
+              </p>
+              <div className="flex flex-wrap gap-3 text-sm">
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="cotMethod"
+                    checked={config.employerContributionMethod === "quebec_statutory"}
+                    onChange={() =>
+                      setConfig({ ...config, employerContributionMethod: "quebec_statutory" })
+                    }
+                  />
+                  Taux Québec (recommandé)
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="cotMethod"
+                    checked={config.employerContributionMethod === "flat_percent"}
+                    onChange={() =>
+                      setConfig({ ...config, employerContributionMethod: "flat_percent" })
+                    }
+                  />
+                  Forfait % unique
+                </label>
+              </div>
+              {config.employerContributionMethod === "quebec_statutory" ? (
+                <div className="grid gap-2 sm:grid-cols-3 text-sm">
+                  {(
+                    [
+                      ["qcRrqEmployerPercent", "RRQ employeur (%)"],
+                      ["qcAeEmployerPercent", "AE employeur (%)"],
+                      ["qcRqapEmployerPercent", "RQAP employeur (%)"],
+                      ["qcFssEmployerPercent", "FSS (%)"],
+                      ["qcCnesstEmployerPercent", "CNESST (%)"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="block">
+                      <span className="text-slate-600">{label}</span>
+                      <input
+                        className="input-field mt-1 !py-2 !min-h-0"
+                        type="number"
+                        step="0.001"
+                        value={config[key]}
+                        onChange={(e) =>
+                          setConfig({
+                            ...config,
+                            [key]: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <label className="block text-sm">
+                  <span className="text-slate-600">Pourcentage forfaitaire sur le brut (%)</span>
+                  <input
+                    className="input-field mt-1 max-w-xs"
+                    type="number"
+                    step="0.1"
+                    value={config.defaultEmployerContributionPercent}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        defaultEmployerContributionPercent: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                  />
+                </label>
+              )}
+            </fieldset>
           </div>
           <button type="button" className="btn-secondary text-sm" onClick={saveConfig}>
             Enregistrer les paramètres
@@ -718,8 +823,9 @@ export default function ComptabilitePage() {
               Heures &amp; paie
             </h2>
             <p className="text-sm text-slate-600">
-              Entrez les heures travaillées : le salaire brut et les cotisations
-              employeur se calculent automatiquement selon le taux horaire.
+              Entrez les heures travaillées : le <strong>salaire brut</strong> du jour
+              sert de base aux cotisations employeur (RRQ, AE, RQAP, FSS, CNESST au
+              Québec — voir <strong>Tarifs</strong>).
             </p>
             <div className="space-y-2">
               {payRates.length === 0 ? (
@@ -733,12 +839,25 @@ export default function ComptabilitePage() {
                     Number.isFinite(hours) && hours > 0 && rate > 0
                       ? computeGrossFromHours(hours, rate)
                       : 0;
-                  const pct =
-                    edu.employerContributionPercent ??
-                    config?.defaultEmployerContributionPercent ??
-                    18;
-                  const cot =
-                    gross > 0 ? computeEmployerContributionCents(gross, pct) : 0;
+                  const cfg = config ?? {
+                    dailyInfantRateCents: 5200,
+                    dailyOver18RateCents: 4500,
+                    employerContributionMethod: "quebec_statutory" as const,
+                    defaultEmployerContributionPercent: 18,
+                    qcRrqEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rrqPercent,
+                    qcAeEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.aePercent,
+                    qcRqapEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rqapPercent,
+                    qcFssEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.fssPercent,
+                    qcCnesstEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.cnesstPercent,
+                  };
+                  const cotResult =
+                    gross > 0
+                      ? computeEmployerCotisationForJournal(
+                          gross,
+                          cfg,
+                          edu.employerContributionPercent
+                        )
+                      : null;
                   return (
                     <div
                       key={edu.id}
@@ -770,12 +889,24 @@ export default function ComptabilitePage() {
                           }))
                         }
                       />
-                      <span className="text-xs sm:text-sm text-slate-600">
-                        {gross > 0 ? (
+                      <span className="text-xs sm:text-sm text-slate-600 block">
+                        {gross > 0 && cotResult ? (
                           <>
                             Brut {formatCad(gross)}
-                            {cot > 0 && (
-                              <> · Cotis. {formatCad(cot)}</>
+                            {cotResult.totalCents > 0 && (
+                              <>
+                                {" "}
+                                · Cotis. {formatCad(cotResult.totalCents)}
+                                {cotResult.breakdown && (
+                                  <span className="block text-[11px] text-slate-500 mt-0.5">
+                                    RRQ {formatCad(cotResult.breakdown.rrqCents)} · AE{" "}
+                                    {formatCad(cotResult.breakdown.aeCents)} · RQAP{" "}
+                                    {formatCad(cotResult.breakdown.rqapCents)} · FSS{" "}
+                                    {formatCad(cotResult.breakdown.fssCents)} · CNESST{" "}
+                                    {formatCad(cotResult.breakdown.cnesstCents)}
+                                  </span>
+                                )}
+                              </>
                             )}
                           </>
                         ) : (

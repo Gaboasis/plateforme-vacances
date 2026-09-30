@@ -207,7 +207,13 @@ async function ensureAccountingSeed() {
       dailyChildRateCents: 4500,
       dailyInfantRateCents: 5200,
       dailyOver18RateCents: 4500,
+      employerContributionMethod: "quebec_statutory",
       defaultEmployerContributionPercent: DEFAULT_EMPLOYER_CONTRIBUTION_PERCENT,
+      qcRrqEmployerPercent: 6.3,
+      qcAeEmployerPercent: 1.82,
+      qcRqapEmployerPercent: 0.602,
+      qcFssEmployerPercent: 1.65,
+      qcCnesstEmployerPercent: 1.15,
     },
     update: {},
   });

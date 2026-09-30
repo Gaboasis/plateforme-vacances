@@ -75,14 +75,30 @@ function configFromRow(row: {
   dailyChildRateCents: number;
   dailyInfantRateCents: number;
   dailyOver18RateCents: number;
+  employerContributionMethod: string;
   defaultEmployerContributionPercent: number;
+  qcRrqEmployerPercent: number;
+  qcAeEmployerPercent: number;
+  qcRqapEmployerPercent: number;
+  qcFssEmployerPercent: number;
+  qcCnesstEmployerPercent: number;
   updatedAt: Date;
 }): AccountingConfig {
+  const method =
+    row.employerContributionMethod === "flat_percent"
+      ? "flat_percent"
+      : "quebec_statutory";
   return {
     dailyChildRateCents: row.dailyChildRateCents,
     dailyInfantRateCents: row.dailyInfantRateCents,
     dailyOver18RateCents: row.dailyOver18RateCents,
+    employerContributionMethod: method,
     defaultEmployerContributionPercent: row.defaultEmployerContributionPercent,
+    qcRrqEmployerPercent: row.qcRrqEmployerPercent,
+    qcAeEmployerPercent: row.qcAeEmployerPercent,
+    qcRqapEmployerPercent: row.qcRqapEmployerPercent,
+    qcFssEmployerPercent: row.qcFssEmployerPercent,
+    qcCnesstEmployerPercent: row.qcCnesstEmployerPercent,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -95,7 +111,13 @@ export async function ensureAccountingConfig(): Promise<AccountingConfig> {
       dailyChildRateCents: 4500,
       dailyInfantRateCents: 5200,
       dailyOver18RateCents: 4500,
+      employerContributionMethod: "quebec_statutory",
       defaultEmployerContributionPercent: 18,
+      qcRrqEmployerPercent: 6.3,
+      qcAeEmployerPercent: 1.82,
+      qcRqapEmployerPercent: 0.602,
+      qcFssEmployerPercent: 1.65,
+      qcCnesstEmployerPercent: 1.15,
     },
     update: {},
   });
@@ -127,6 +149,24 @@ export async function setAccountingConfig(
       0,
       updates.defaultEmployerContributionPercent
     );
+  }
+  if (updates.employerContributionMethod != null) {
+    data.employerContributionMethod =
+      updates.employerContributionMethod === "flat_percent"
+        ? "flat_percent"
+        : "quebec_statutory";
+  }
+  const qcFields = [
+    ["qcRrqEmployerPercent", updates.qcRrqEmployerPercent],
+    ["qcAeEmployerPercent", updates.qcAeEmployerPercent],
+    ["qcRqapEmployerPercent", updates.qcRqapEmployerPercent],
+    ["qcFssEmployerPercent", updates.qcFssEmployerPercent],
+    ["qcCnesstEmployerPercent", updates.qcCnesstEmployerPercent],
+  ] as const;
+  for (const [key, val] of qcFields) {
+    if (val != null && Number.isFinite(val)) {
+      data[key] = Math.max(0, val);
+    }
   }
   const row = await prisma.accountingConfig.update({
     where: { id: "default" },

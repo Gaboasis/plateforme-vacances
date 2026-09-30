@@ -17,12 +17,20 @@ export interface Educator {
   employerContributionPercent?: number;
 }
 
+export type EmployerContributionMethod = "quebec_statutory" | "flat_percent";
+
 export interface AccountingConfig {
   /** @deprecated utiliser dailyInfantRateCents / dailyOver18RateCents */
   dailyChildRateCents?: number;
   dailyInfantRateCents: number;
   dailyOver18RateCents: number;
+  employerContributionMethod: EmployerContributionMethod;
   defaultEmployerContributionPercent: number;
+  qcRrqEmployerPercent: number;
+  qcAeEmployerPercent: number;
+  qcRqapEmployerPercent: number;
+  qcFssEmployerPercent: number;
+  qcCnesstEmployerPercent: number;
   updatedAt?: string;
 }
 

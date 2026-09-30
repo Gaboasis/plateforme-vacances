@@ -26,7 +26,13 @@ model AccountingConfig {
   dailyChildRateCents             Int      @default(4500) // legacy
   dailyInfantRateCents            Int      @default(5200) // poupon 6–18 mois
   dailyOver18RateCents            Int      @default(4500) // 18 mois et +
-  defaultEmployerContributionPercent Float @default(18)
+  defaultEmployerContributionPercent Float @default(18) // mode flat_percent seulement
+  employerContributionMethod      String   @default("quebec_statutory") // quebec_statutory | flat_percent
+  qcRrqEmployerPercent            Float    @default(6.3)
+  qcAeEmployerPercent             Float    @default(1.82)
+  qcRqapEmployerPercent           Float    @default(0.602)
+  qcFssEmployerPercent              Float    @default(1.65)
+  qcCnesstEmployerPercent         Float    @default(1.15)
   updatedAt                       DateTime @updatedAt
 }
 

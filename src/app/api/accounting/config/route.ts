@@ -5,6 +5,7 @@ import {
   ensureAccountingConfig,
   setAccountingConfig,
 } from "@/lib/store-accounting";
+import type { EmployerContributionMethod } from "@/types";
 
 export async function GET() {
   try {
@@ -22,7 +23,13 @@ export async function PUT(request: NextRequest) {
       dailyChildRateCents?: number;
       dailyInfantRateCents?: number;
       dailyOver18RateCents?: number;
+      employerContributionMethod?: string;
       defaultEmployerContributionPercent?: number;
+      qcRrqEmployerPercent?: number;
+      qcAeEmployerPercent?: number;
+      qcRqapEmployerPercent?: number;
+      qcFssEmployerPercent?: number;
+      qcCnesstEmployerPercent?: number;
     };
     const actorId =
       typeof body._actorEducatorId === "string"
@@ -37,7 +44,13 @@ export async function PUT(request: NextRequest) {
       dailyChildRateCents?: number;
       dailyInfantRateCents?: number;
       dailyOver18RateCents?: number;
+      employerContributionMethod?: EmployerContributionMethod;
       defaultEmployerContributionPercent?: number;
+      qcRrqEmployerPercent?: number;
+      qcAeEmployerPercent?: number;
+      qcRqapEmployerPercent?: number;
+      qcFssEmployerPercent?: number;
+      qcCnesstEmployerPercent?: number;
     } = {};
     if (typeof body.dailyChildRateCents === "number") {
       updates.dailyChildRateCents = body.dailyChildRateCents;
@@ -51,6 +64,26 @@ export async function PUT(request: NextRequest) {
     if (typeof body.defaultEmployerContributionPercent === "number") {
       updates.defaultEmployerContributionPercent =
         body.defaultEmployerContributionPercent;
+    }
+    if (body.employerContributionMethod === "flat_percent") {
+      updates.employerContributionMethod = "flat_percent";
+    } else if (body.employerContributionMethod === "quebec_statutory") {
+      updates.employerContributionMethod = "quebec_statutory";
+    }
+    if (typeof body.qcRrqEmployerPercent === "number") {
+      updates.qcRrqEmployerPercent = body.qcRrqEmployerPercent;
+    }
+    if (typeof body.qcAeEmployerPercent === "number") {
+      updates.qcAeEmployerPercent = body.qcAeEmployerPercent;
+    }
+    if (typeof body.qcRqapEmployerPercent === "number") {
+      updates.qcRqapEmployerPercent = body.qcRqapEmployerPercent;
+    }
+    if (typeof body.qcFssEmployerPercent === "number") {
+      updates.qcFssEmployerPercent = body.qcFssEmployerPercent;
+    }
+    if (typeof body.qcCnesstEmployerPercent === "number") {
+      updates.qcCnesstEmployerPercent = body.qcCnesstEmployerPercent;
     }
 
     const config = await setAccountingConfig(updates);
