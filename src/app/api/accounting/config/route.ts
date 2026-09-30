@@ -20,6 +20,8 @@ export async function PUT(request: NextRequest) {
     const body = (await request.json()) as Record<string, unknown> & {
       _actorEducatorId?: string;
       dailyChildRateCents?: number;
+      dailyInfantRateCents?: number;
+      dailyOver18RateCents?: number;
       defaultEmployerContributionPercent?: number;
     };
     const actorId =
@@ -33,10 +35,18 @@ export async function PUT(request: NextRequest) {
 
     const updates: {
       dailyChildRateCents?: number;
+      dailyInfantRateCents?: number;
+      dailyOver18RateCents?: number;
       defaultEmployerContributionPercent?: number;
     } = {};
     if (typeof body.dailyChildRateCents === "number") {
       updates.dailyChildRateCents = body.dailyChildRateCents;
+    }
+    if (typeof body.dailyInfantRateCents === "number") {
+      updates.dailyInfantRateCents = body.dailyInfantRateCents;
+    }
+    if (typeof body.dailyOver18RateCents === "number") {
+      updates.dailyOver18RateCents = body.dailyOver18RateCents;
     }
     if (typeof body.defaultEmployerContributionPercent === "number") {
       updates.defaultEmployerContributionPercent =

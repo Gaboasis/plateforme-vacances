@@ -18,13 +18,18 @@ export interface Educator {
 }
 
 export interface AccountingConfig {
-  dailyChildRateCents: number;
+  /** @deprecated utiliser dailyInfantRateCents / dailyOver18RateCents */
+  dailyChildRateCents?: number;
+  dailyInfantRateCents: number;
+  dailyOver18RateCents: number;
   defaultEmployerContributionPercent: number;
   updatedAt?: string;
 }
 
 export type JournalLineCategory =
   | "revenue_enrollment"
+  | "revenue_enrollment_infant"
+  | "revenue_enrollment_over18"
   | "revenue_other"
   | "expense_educator_gross"
   | "expense_employer_cotisation"

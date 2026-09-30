@@ -71,21 +71,35 @@ function parseJournalDate(dateStr: string): Date {
   return d;
 }
 
+function configFromRow(row: {
+  dailyChildRateCents: number;
+  dailyInfantRateCents: number;
+  dailyOver18RateCents: number;
+  defaultEmployerContributionPercent: number;
+  updatedAt: Date;
+}): AccountingConfig {
+  return {
+    dailyChildRateCents: row.dailyChildRateCents,
+    dailyInfantRateCents: row.dailyInfantRateCents,
+    dailyOver18RateCents: row.dailyOver18RateCents,
+    defaultEmployerContributionPercent: row.defaultEmployerContributionPercent,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
 export async function ensureAccountingConfig(): Promise<AccountingConfig> {
   const row = await prisma.accountingConfig.upsert({
     where: { id: "default" },
     create: {
       id: "default",
       dailyChildRateCents: 4500,
+      dailyInfantRateCents: 5200,
+      dailyOver18RateCents: 4500,
       defaultEmployerContributionPercent: 18,
     },
     update: {},
   });
-  return {
-    dailyChildRateCents: row.dailyChildRateCents,
-    defaultEmployerContributionPercent: row.defaultEmployerContributionPercent,
-    updatedAt: row.updatedAt.toISOString(),
-  };
+  return configFromRow(row);
 }
 
 export async function setAccountingConfig(
@@ -95,6 +109,18 @@ export async function setAccountingConfig(
   const data: Record<string, unknown> = {};
   if (updates.dailyChildRateCents != null) {
     data.dailyChildRateCents = Math.max(0, Math.round(updates.dailyChildRateCents));
+  }
+  if (updates.dailyInfantRateCents != null) {
+    data.dailyInfantRateCents = Math.max(
+      0,
+      Math.round(updates.dailyInfantRateCents)
+    );
+  }
+  if (updates.dailyOver18RateCents != null) {
+    data.dailyOver18RateCents = Math.max(
+      0,
+      Math.round(updates.dailyOver18RateCents)
+    );
   }
   if (updates.defaultEmployerContributionPercent != null) {
     data.defaultEmployerContributionPercent = Math.max(
@@ -106,11 +132,7 @@ export async function setAccountingConfig(
     where: { id: "default" },
     data,
   });
-  return {
-    dailyChildRateCents: row.dailyChildRateCents,
-    defaultEmployerContributionPercent: row.defaultEmployerContributionPercent,
-    updatedAt: row.updatedAt.toISOString(),
-  };
+  return configFromRow(row);
 }
 
 export async function getEducatorPaySummaries(): Promise<EducatorPaySummary[]> {
@@ -166,7 +188,13 @@ export async function saveDailyJournal(options: {
       dailyRateCents: line.dailyRateCents ?? null,
       sortOrder: line.sortOrder ?? index,
     }))
-    .filter((l) => l.amountCents > 0 || l.category === "revenue_enrollment");
+    .filter(
+      (l) =>
+        l.amountCents > 0 ||
+        l.category === "revenue_enrollment" ||
+        l.category === "revenue_enrollment_infant" ||
+        l.category === "revenue_enrollment_over18"
+    );
 
   const result = await prisma.$transaction(async (tx) => {
     const existing = await tx.dailyJournal.findUnique({ where: { journalDate } });

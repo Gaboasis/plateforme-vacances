@@ -205,6 +205,8 @@ async function ensureAccountingSeed() {
     create: {
       id: "default",
       dailyChildRateCents: 4500,
+      dailyInfantRateCents: 5200,
+      dailyOver18RateCents: 4500,
       defaultEmployerContributionPercent: DEFAULT_EMPLOYER_CONTRIBUTION_PERCENT,
     },
     update: {},

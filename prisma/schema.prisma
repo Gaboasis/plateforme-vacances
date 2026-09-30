@@ -23,7 +23,9 @@ model Educator {
 
 model AccountingConfig {
   id                              String   @id @default("default")
-  dailyChildRateCents             Int      @default(4500)
+  dailyChildRateCents             Int      @default(4500) // legacy
+  dailyInfantRateCents            Int      @default(5200) // poupon 6–18 mois
+  dailyOver18RateCents            Int      @default(4500) // 18 mois et +
   defaultEmployerContributionPercent Float @default(18)
   updatedAt                       DateTime @updatedAt
 }
@@ -44,7 +46,7 @@ model JournalLine {
   journalId                   String
   journal                     DailyJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
   kind                        String       // "expense" | "revenue"
-  category                    String       // revenue_enrollment | revenue_other | expense_educator_gross | expense_employer_cotisation | expense_other
+  category                    String       // revenue_enrollment_infant | revenue_enrollment_over18 | revenue_enrollment (legacy) | revenue_other | ...
   label                       String?
   amountCents                 Int
   educatorId                  String?

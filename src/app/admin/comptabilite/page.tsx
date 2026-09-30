@@ -47,14 +47,23 @@ function todayIso() {
   return format(new Date(), "yyyy-MM-dd");
 }
 
+function enrollmentTotalCents(countStr: string, rateInput: string): number {
+  const n = parseInt(countStr, 10);
+  const rate = parseCadInput(rateInput || "0");
+  if (!Number.isFinite(n) || n <= 0 || rate <= 0) return 0;
+  return n * rate;
+}
+
 export default function ComptabilitePage() {
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [config, setConfig] = useState<AccountingConfig | null>(null);
   const [payRates, setPayRates] = useState<EducatorPaySummary[]>([]);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
-  const [childCount, setChildCount] = useState("");
-  const [dailyRateInput, setDailyRateInput] = useState("");
+  const [infantCount, setInfantCount] = useState("");
+  const [infantRateInput, setInfantRateInput] = useState("");
+  const [over18Count, setOver18Count] = useState("");
+  const [over18RateInput, setOver18RateInput] = useState("");
   const [hoursDraft, setHoursDraft] = useState<Record<string, string>>({});
   const [otherRevenueLabel, setOtherRevenueLabel] = useState("");
   const [otherRevenueAmount, setOtherRevenueAmount] = useState("");
@@ -95,8 +104,12 @@ export default function ComptabilitePage() {
 
       setConfig(data.config);
       setPayRates(Array.isArray(data.payRates) ? data.payRates : []);
-      setDailyRateInput(
-        String(centsToDollars(data.config?.dailyChildRateCents ?? 4500))
+      const cfg = data.config as AccountingConfig | undefined;
+      setInfantRateInput(
+        String(centsToDollars(cfg?.dailyInfantRateCents ?? 5200))
+      );
+      setOver18RateInput(
+        String(centsToDollars(cfg?.dailyOver18RateCents ?? 4500))
       );
 
       const journal = data.journal as DailyJournal | null;
@@ -113,16 +126,33 @@ export default function ComptabilitePage() {
               clientId: l.id,
             }))
         );
-        const enroll = journal.lines.find(
-          (l) => l.category === "revenue_enrollment"
+        const infantLine = journal.lines.find(
+          (l) => l.category === "revenue_enrollment_infant"
         );
-        if (enroll) {
-          setChildCount(enroll.childCount != null ? String(enroll.childCount) : "");
-          if (enroll.dailyRateCents != null) {
-            setDailyRateInput(String(centsToDollars(enroll.dailyRateCents)));
+        const over18Line = journal.lines.find(
+          (l) =>
+            l.category === "revenue_enrollment_over18" ||
+            l.category === "revenue_enrollment"
+        );
+        if (infantLine) {
+          setInfantCount(
+            infantLine.childCount != null ? String(infantLine.childCount) : ""
+          );
+          if (infantLine.dailyRateCents != null) {
+            setInfantRateInput(String(centsToDollars(infantLine.dailyRateCents)));
           }
         } else {
-          setChildCount("");
+          setInfantCount("");
+        }
+        if (over18Line) {
+          setOver18Count(
+            over18Line.childCount != null ? String(over18Line.childCount) : ""
+          );
+          if (over18Line.dailyRateCents != null) {
+            setOver18RateInput(String(centsToDollars(over18Line.dailyRateCents)));
+          }
+        } else {
+          setOver18Count("");
         }
         const hours: Record<string, string> = {};
         for (const l of journal.lines) {
@@ -138,7 +168,8 @@ export default function ComptabilitePage() {
       } else {
         setNotes("");
         setLines([]);
-        setChildCount("");
+        setInfantCount("");
+        setOver18Count("");
         setHoursDraft({});
       }
 
@@ -162,12 +193,15 @@ export default function ComptabilitePage() {
     loadDay(selectedDate);
   }, [selectedDate, loadDay]);
 
-  const enrollmentRevenueCents = useMemo(() => {
-    const n = parseInt(childCount, 10);
-    const rate = parseCadInput(dailyRateInput || "0");
-    if (!Number.isFinite(n) || n <= 0 || rate <= 0) return 0;
-    return n * rate;
-  }, [childCount, dailyRateInput]);
+  const infantRevenueCents = useMemo(
+    () => enrollmentTotalCents(infantCount, infantRateInput),
+    [infantCount, infantRateInput]
+  );
+  const over18RevenueCents = useMemo(
+    () => enrollmentTotalCents(over18Count, over18RateInput),
+    [over18Count, over18RateInput]
+  );
+  const enrollmentRevenueCents = infantRevenueCents + over18RevenueCents;
 
   const payrollLines = useMemo(() => {
     const out: DraftLine[] = [];
@@ -224,25 +258,38 @@ export default function ComptabilitePage() {
 
   const allLinesForSave = useMemo(() => {
     const built: DraftLine[] = [];
-    if (enrollmentRevenueCents > 0) {
-      const n = parseInt(childCount, 10);
+    if (infantRevenueCents > 0) {
       built.push({
-        clientId: "enrollment",
+        clientId: "enrollment-infant",
         kind: "revenue",
-        category: "revenue_enrollment",
-        label: "Inscriptions du jour",
-        amountCents: enrollmentRevenueCents,
-        childCount: n,
-        dailyRateCents: parseCadInput(dailyRateInput || "0"),
+        category: "revenue_enrollment_infant",
+        label: "Poupons (6 à 18 mois)",
+        amountCents: infantRevenueCents,
+        childCount: parseInt(infantCount, 10),
+        dailyRateCents: parseCadInput(infantRateInput || "0"),
+      });
+    }
+    if (over18RevenueCents > 0) {
+      built.push({
+        clientId: "enrollment-over18",
+        kind: "revenue",
+        category: "revenue_enrollment_over18",
+        label: "18 mois et plus",
+        amountCents: over18RevenueCents,
+        childCount: parseInt(over18Count, 10),
+        dailyRateCents: parseCadInput(over18RateInput || "0"),
       });
     }
     built.push(...manualLines);
     built.push(...payrollLines);
     return built;
   }, [
-    enrollmentRevenueCents,
-    childCount,
-    dailyRateInput,
+    infantRevenueCents,
+    over18RevenueCents,
+    infantCount,
+    over18Count,
+    infantRateInput,
+    over18RateInput,
     manualLines,
     payrollLines,
   ]);
@@ -329,7 +376,8 @@ export default function ComptabilitePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         _actorEducatorId: actorId,
-        dailyChildRateCents: parseCadInput(dailyRateInput || "0"),
+        dailyInfantRateCents: parseCadInput(infantRateInput || "0"),
+        dailyOver18RateCents: parseCadInput(over18RateInput || "0"),
         defaultEmployerContributionPercent: config.defaultEmployerContributionPercent,
       }),
     });
@@ -432,15 +480,28 @@ export default function ComptabilitePage() {
           <h2 className="font-semibold text-slate-800">Paramètres rapides</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm">
-              <span className="text-slate-600">Tarif par enfant / jour ($)</span>
+              <span className="text-slate-600">
+                Tarif poupon (6–18 mois) / jour ($)
+              </span>
               <input
                 className="input-field mt-1"
-                value={dailyRateInput}
-                onChange={(e) => setDailyRateInput(e.target.value)}
+                value={infantRateInput}
+                onChange={(e) => setInfantRateInput(e.target.value)}
                 inputMode="decimal"
               />
             </label>
             <label className="block text-sm">
+              <span className="text-slate-600">
+                Tarif 18 mois et + / jour ($)
+              </span>
+              <input
+                className="input-field mt-1"
+                value={over18RateInput}
+                onChange={(e) => setOver18RateInput(e.target.value)}
+                inputMode="decimal"
+              />
+            </label>
+            <label className="block text-sm sm:col-span-2">
               <span className="text-slate-600">
                 Cotisations employeur par défaut (%)
               </span>
@@ -529,33 +590,78 @@ export default function ComptabilitePage() {
         <>
           <section className="card space-y-4">
             <h2 className="font-semibold text-lg text-slate-800">Revenus</h2>
-            <div className="rounded-xl bg-sage-50 border border-sage-100 p-4 space-y-3">
+            <div className="rounded-xl bg-sage-50 border border-sage-100 p-4 space-y-4">
               <p className="text-sm font-medium text-slate-700">
                 Inscriptions du jour
               </p>
-              <div className="grid gap-3 sm:grid-cols-3 items-end">
-                <label className="text-sm block">
-                  <span className="text-slate-600">Nombre d&apos;enfants</span>
-                  <input
-                    className="input-field mt-1"
-                    type="number"
-                    min={0}
-                    value={childCount}
-                    onChange={(e) => setChildCount(e.target.value)}
-                  />
-                </label>
-                <label className="text-sm block">
-                  <span className="text-slate-600">Tarif / jour ($)</span>
-                  <input
-                    className="input-field mt-1"
-                    inputMode="decimal"
-                    value={dailyRateInput}
-                    onChange={(e) => setDailyRateInput(e.target.value)}
-                  />
-                </label>
-                <div className="text-right sm:text-left">
+              <div className="rounded-lg bg-white border border-sage-100 p-3 space-y-2">
+                <p className="text-sm font-medium text-slate-800">
+                  Poupons (6 à 18 mois)
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3 items-end">
+                  <label className="text-sm block">
+                    <span className="text-slate-600">Nombre d&apos;enfants</span>
+                    <input
+                      className="input-field mt-1"
+                      type="number"
+                      min={0}
+                      value={infantCount}
+                      onChange={(e) => setInfantCount(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm block">
+                    <span className="text-slate-600">Tarif / jour ($)</span>
+                    <input
+                      className="input-field mt-1"
+                      inputMode="decimal"
+                      value={infantRateInput}
+                      onChange={(e) => setInfantRateInput(e.target.value)}
+                    />
+                  </label>
+                  <div>
+                    <p className="text-xs text-slate-500">Sous-total</p>
+                    <p className="text-lg font-bold text-emerald-700">
+                      {formatCad(infantRevenueCents)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-lg bg-white border border-sage-100 p-3 space-y-2">
+                <p className="text-sm font-medium text-slate-800">
+                  18 mois et plus
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3 items-end">
+                  <label className="text-sm block">
+                    <span className="text-slate-600">Nombre d&apos;enfants</span>
+                    <input
+                      className="input-field mt-1"
+                      type="number"
+                      min={0}
+                      value={over18Count}
+                      onChange={(e) => setOver18Count(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm block">
+                    <span className="text-slate-600">Tarif / jour ($)</span>
+                    <input
+                      className="input-field mt-1"
+                      inputMode="decimal"
+                      value={over18RateInput}
+                      onChange={(e) => setOver18RateInput(e.target.value)}
+                    />
+                  </label>
+                  <div>
+                    <p className="text-xs text-slate-500">Sous-total</p>
+                    <p className="text-lg font-bold text-emerald-700">
+                      {formatCad(over18RevenueCents)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end border-t border-sage-200 pt-3">
+                <div className="text-right">
                   <p className="text-xs text-slate-500">Total inscriptions</p>
-                  <p className="text-xl font-bold text-emerald-700">
+                  <p className="text-xl font-bold text-emerald-800">
                     {formatCad(enrollmentRevenueCents)}
                   </p>
                 </div>
