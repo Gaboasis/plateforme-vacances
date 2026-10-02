@@ -209,9 +209,7 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
               <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4 space-y-1 text-sm">
                 <p className="font-semibold text-emerald-900">Revenus</p>
                 <p>Inscriptions : {formatCad(report.revenue.enrollmentCents)}</p>
-                <p>Sorties : {formatCad(report.revenue.sortieCents)}</p>
-                <p>Photos : {formatCad(report.revenue.photoCents)}</p>
-                <p>Autres : {formatCad(report.revenue.otherCents)}</p>
+                <p>Autres revenus : {formatCad(report.revenue.otherCents)}</p>
                 <p className="font-bold text-emerald-800 pt-1">
                   Total {formatCad(report.revenue.totalCents)}
                 </p>

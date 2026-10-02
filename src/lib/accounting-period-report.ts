@@ -27,8 +27,6 @@ export type PeriodReport = {
   daysWithJournal: number;
   revenue: {
     enrollmentCents: number;
-    sortieCents: number;
-    photoCents: number;
     otherCents: number;
     totalCents: number;
   };
@@ -111,8 +109,6 @@ export async function buildPeriodReport(options: {
 
   const revenue = {
     enrollmentCents: 0,
-    sortieCents: 0,
-    photoCents: 0,
     otherCents: 0,
     totalCents: 0,
   };
@@ -144,11 +140,7 @@ export async function buildPeriodReport(options: {
             revenue.enrollmentCents += line.amountCents;
             break;
           case "revenue_sortie":
-            revenue.sortieCents += line.amountCents;
-            break;
           case "revenue_photo":
-            revenue.photoCents += line.amountCents;
-            break;
           default:
             revenue.otherCents += line.amountCents;
         }

@@ -111,8 +111,6 @@ export default function ComptabilitePage() {
   const [infantRateInput, setInfantRateInput] = useState("");
   const [over18Count, setOver18Count] = useState("");
   const [over18RateInput, setOver18RateInput] = useState("");
-  const [sortieAmount, setSortieAmount] = useState("");
-  const [photoAmount, setPhotoAmount] = useState("");
   const [hoursDraft, setHoursDraft] = useState<Record<string, string>>({});
   const [otherRevenueLabel, setOtherRevenueLabel] = useState("");
   const [otherRevenueAmount, setOtherRevenueAmount] = useState("");
@@ -166,10 +164,21 @@ export default function ComptabilitePage() {
         setNotes(journal.notes ?? "");
         setLines(
           journal.lines
-            .filter((l) => l.category === "revenue_other" || l.category === "expense_other")
+            .filter(
+              (l) =>
+                l.category === "revenue_other" ||
+                l.category === "expense_other" ||
+                l.category === "revenue_sortie" ||
+                l.category === "revenue_photo"
+            )
             .map((l) => ({
               ...l,
               clientId: l.id,
+              category:
+                l.category === "revenue_sortie" || l.category === "revenue_photo"
+                  ? "revenue_other"
+                  : l.category,
+              label: l.label?.trim() || "Autre revenu",
             }))
         );
         const infantLine = journal.lines.find(
@@ -200,14 +209,6 @@ export default function ComptabilitePage() {
         } else {
           setOver18Count("");
         }
-        const sortieLine = journal.lines.find((l) => l.category === "revenue_sortie");
-        const photoLine = journal.lines.find((l) => l.category === "revenue_photo");
-        setSortieAmount(
-          sortieLine ? String(centsToDollars(sortieLine.amountCents)) : ""
-        );
-        setPhotoAmount(
-          photoLine ? String(centsToDollars(photoLine.amountCents)) : ""
-        );
         const hours: Record<string, string> = {};
         for (const l of journal.lines) {
           if (
@@ -224,8 +225,6 @@ export default function ComptabilitePage() {
         setLines([]);
         setInfantCount("");
         setOver18Count("");
-        setSortieAmount("");
-        setPhotoAmount("");
         setHoursDraft({});
       }
 
@@ -373,26 +372,6 @@ export default function ComptabilitePage() {
         dailyRateCents: parseCadInput(over18RateInput || "0"),
       });
     }
-    const sortieCents = parseCadInput(sortieAmount || "0");
-    if (sortieCents > 0) {
-      built.push({
-        clientId: "revenue-sortie",
-        kind: "revenue",
-        category: "revenue_sortie",
-        label: "Sortie",
-        amountCents: sortieCents,
-      });
-    }
-    const photoCents = parseCadInput(photoAmount || "0");
-    if (photoCents > 0) {
-      built.push({
-        clientId: "revenue-photo",
-        kind: "revenue",
-        category: "revenue_photo",
-        label: "Photo",
-        amountCents: photoCents,
-      });
-    }
     built.push(...manualLines);
     built.push(...payrollLines);
     return built;
@@ -403,8 +382,6 @@ export default function ComptabilitePage() {
     over18Count,
     infantRateInput,
     over18RateInput,
-    sortieAmount,
-    photoAmount,
     manualLines,
     payrollLines,
   ]);
@@ -912,28 +889,6 @@ export default function ComptabilitePage() {
                   </p>
                 </div>
               </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-sm block">
-                <span className="text-slate-600">Sortie ($)</span>
-                <input
-                  className="input-field mt-1"
-                  inputMode="decimal"
-                  value={sortieAmount}
-                  onChange={(e) => setSortieAmount(e.target.value)}
-                  placeholder="Revenu sortie du jour"
-                />
-              </label>
-              <label className="text-sm block">
-                <span className="text-slate-600">Photo ($)</span>
-                <input
-                  className="input-field mt-1"
-                  inputMode="decimal"
-                  value={photoAmount}
-                  onChange={(e) => setPhotoAmount(e.target.value)}
-                  placeholder="Revenu photos du jour"
-                />
-              </label>
             </div>
             <div className="flex flex-wrap gap-2 items-end">
               <label className="text-sm flex-1 min-w-[140px]">
