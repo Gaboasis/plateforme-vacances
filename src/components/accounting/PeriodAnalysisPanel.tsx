@@ -3,10 +3,9 @@
 import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
-import { BarChart3, Plus, Trash2, RefreshCw, Calendar } from "lucide-react";
+import { BarChart3, RefreshCw, Calendar } from "lucide-react";
 import type { PeriodReport } from "@/lib/accounting-period-report";
-import { FIXED_EXPENSE_SUGGESTIONS } from "@/lib/fixed-expense-catalog";
-import { formatCad, parseCadInput } from "@/lib/money";
+import { formatCad } from "@/lib/money";
 
 type Props = {
   actorId: string | null;
@@ -20,12 +19,6 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
   const [report, setReport] = useState<PeriodReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const [fixLabel, setFixLabel] = useState(FIXED_EXPENSE_SUGGESTIONS[0] ?? "");
-  const [fixAmount, setFixAmount] = useState("");
-  const [fixSource, setFixSource] = useState("");
-  const [fixNote, setFixNote] = useState("");
-  const [addingFixed, setAddingFixed] = useState(false);
 
   const addHolidayDate = () => {
     const d = newHolidayDate.trim();
@@ -58,45 +51,6 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
     }
   };
 
-  const addFixedExpense = async () => {
-    if (!actorId || !from || !to) return;
-    setAddingFixed(true);
-    try {
-      const res = await fetch("/api/accounting/fixed-expenses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          periodStart: from,
-          periodEnd: to,
-          label: fixLabel,
-          amountDollars: fixAmount,
-          sourceName: fixSource,
-          note: fixNote,
-          _actorEducatorId: actorId,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erreur");
-      setFixAmount("");
-      setFixNote("");
-      await loadReport();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur");
-    } finally {
-      setAddingFixed(false);
-    }
-  };
-
-  const removeFixed = async (id: string) => {
-    if (!actorId) return;
-    await fetch("/api/accounting/fixed-expenses", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, _actorEducatorId: actorId }),
-    });
-    await loadReport();
-  };
-
   return (
     <div className="space-y-6">
       <div className="card space-y-4">
@@ -106,14 +60,11 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
         </h2>
         <p className="text-sm text-slate-600">
           Les revenus et salaires du journal sont cumulés entre <strong>Du</strong> et{" "}
-          <strong>Au</strong>. Après <strong>Calculer</strong>, vous voyez le résumé (revenus,
-          paie, fériés) et la section{" "}
-          <strong>5 — Dépenses fixes</strong> (comme la feuille Excel), où vous saisissez
-          hydro, assurance, prêt, etc. pour la période. Pour chaque{" "}
-          <strong>date de jour férié</strong>, l&apos;indemnité suit la règle québécoise :{" "}
-          <strong>1/20 du salaire brut</strong> sur les{" "}
-          <strong>4 semaines complètes</strong> avant la semaine du férié (heures du journal,
-          y compris avant « Du »).
+          <strong>Au</strong>. Les <strong>dépenses fixes</strong> (point 5 Excel) se
+          saisissent dans l&apos;onglet <strong>Journal du jour</strong> et sont cumulées
+          ici. Pour chaque <strong>date de jour férié</strong>, l&apos;indemnité suit la
+          règle québécoise : <strong>1/20 du salaire brut</strong> sur les{" "}
+          <strong>4 semaines complètes</strong> avant la semaine du férié.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm block">
@@ -136,14 +87,14 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
           </label>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-          <p className="text-sm font-medium text-slate-800 flex items-center gap-2">
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-slate-700 flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            Dates des jours fériés (dans la période)
+            Dates de jours fériés dans la période
           </p>
           <div className="flex flex-wrap gap-2 items-end">
-            <label className="text-sm flex-1 min-w-[160px]">
-              <span className="text-slate-600">Date du férié</span>
+            <label className="text-sm block flex-1 min-w-[160px]">
+              <span className="text-slate-600">Date férié</span>
               <input
                 type="date"
                 className="input-field mt-1"
@@ -152,7 +103,6 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
               />
             </label>
             <button type="button" className="btn-secondary" onClick={addHolidayDate}>
-              <Plus className="h-4 w-4" />
               Ajouter
             </button>
           </div>
@@ -161,18 +111,17 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
               {holidayDates.map((d) => (
                 <li
                   key={d}
-                  className="inline-flex items-center gap-1 rounded-lg bg-white border border-slate-200 px-2 py-1 text-sm"
+                  className="text-sm bg-slate-100 rounded-lg px-3 py-1 flex items-center gap-2"
                 >
                   {format(parseISO(d), "d MMM yyyy", { locale: fr })}
                   <button
                     type="button"
-                    className="text-rose-600 p-1"
+                    className="text-slate-500 hover:text-rose-600"
                     onClick={() =>
                       setHolidayDates((prev) => prev.filter((x) => x !== d))
                     }
-                    aria-label="Retirer"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    ×
                   </button>
                 </li>
               ))}
@@ -245,95 +194,23 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
             </div>
           </div>
 
-          <div id="depenses-fixes" className="card space-y-4 scroll-mt-4">
-            <div>
+          {report.fixedExpenses.length > 0 && (
+            <div className="card space-y-2">
               <h3 className="font-semibold text-slate-800">
-                5 — Dépenses fixes (période)
+                Détail dépenses fixes (saisies au journal)
               </h3>
-              <p className="text-sm text-slate-600 mt-1">
-                Même rôle que l&apos;onglet <strong>5_Dépenses Fixes</strong> de l&apos;Excel :
-                une ligne par poste (prêt, hydro, Bell…). Les montants sont enregistrés pour
-                les dates <strong>Du / Au</strong> ci-dessus.
-              </p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 items-end">
-              <label className="text-sm block sm:col-span-2">
-                <span className="text-slate-600">Dépense</span>
-                <input
-                  list="fixed-expense-suggestions"
-                  className="input-field mt-1"
-                  value={fixLabel}
-                  onChange={(e) => setFixLabel(e.target.value)}
-                />
-                <datalist id="fixed-expense-suggestions">
-                  {FIXED_EXPENSE_SUGGESTIONS.map((s) => (
-                    <option key={s} value={s} />
-                  ))}
-                </datalist>
-              </label>
-              <label className="text-sm block">
-                <span className="text-slate-600">Montant ($)</span>
-                <input
-                  className="input-field mt-1"
-                  inputMode="decimal"
-                  value={fixAmount}
-                  onChange={(e) => setFixAmount(e.target.value)}
-                />
-              </label>
-              <label className="text-sm block">
-                <span className="text-slate-600">Responsable</span>
-                <input
-                  className="input-field mt-1"
-                  placeholder="Ex. Kamar"
-                  value={fixSource}
-                  onChange={(e) => setFixSource(e.target.value)}
-                />
-              </label>
-            </div>
-            <label className="text-sm block">
-              <span className="text-slate-600">Note</span>
-              <input
-                className="input-field mt-1"
-                value={fixNote}
-                onChange={(e) => setFixNote(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={addingFixed}
-              onClick={addFixedExpense}
-            >
-              <Plus className="h-4 w-4" />
-              Ajouter la dépense fixe
-            </button>
-            {report.fixedExpenses.length === 0 ? (
-              <p className="text-sm text-slate-500 border border-dashed border-slate-200 rounded-xl p-4">
-                Aucune dépense fixe pour cette période. Choisissez un libellé (liste
-                suggérée), entrez le montant, puis cliquez sur Ajouter.
-              </p>
-            ) : (
               <ul className="divide-y divide-slate-100 text-sm">
                 {report.fixedExpenses.map((f) => (
-                  <li key={f.id} className="flex justify-between items-center py-2 gap-2">
-                    <span>
-                      {f.label} — <strong>{formatCad(f.amountCents)}</strong>
-                      {f.sourceName && (
-                        <span className="text-slate-500"> ({f.sourceName})</span>
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      className="text-rose-600 p-2"
-                      onClick={() => removeFixed(f.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                  <li key={f.id} className="py-2">
+                    {f.label} — <strong>{formatCad(f.amountCents)}</strong>
+                    {f.sourceName && (
+                      <span className="text-slate-500"> ({f.sourceName})</span>
+                    )}
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
+            </div>
+          )}
 
           {report.holidayIndemnityLines.length > 0 && (
             <div className="card overflow-x-auto">

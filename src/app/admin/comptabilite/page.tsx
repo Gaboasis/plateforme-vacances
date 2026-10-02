@@ -26,6 +26,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
+import { FixedExpensesJournalSection } from "@/components/accounting/FixedExpensesJournalSection";
 import type {
   AccountingConfig,
   DailyJournal,
@@ -120,6 +121,7 @@ export default function ComptabilitePage() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<"idle" | "ok" | "err">("idle");
   const [showSettings, setShowSettings] = useState(false);
+  const [fixedExpensesDayCents, setFixedExpensesDayCents] = useState(0);
   const [monthSummaries, setMonthSummaries] = useState<
     {
       journalDate: string;
@@ -393,8 +395,17 @@ export default function ComptabilitePage() {
       if (l.kind === "revenue") revenue += l.amountCents;
       else expense += l.amountCents;
     }
-    return { revenue, expense, balance: revenue - expense };
-  }, [allLinesForSave]);
+    const expenseWithFixed = expense + fixedExpensesDayCents;
+    return {
+      revenue,
+      expense: expenseWithFixed,
+      balance: revenue - expenseWithFixed,
+    };
+  }, [allLinesForSave, fixedExpensesDayCents]);
+
+  const onFixedExpensesTotalChange = useCallback((totalCents: number) => {
+    setFixedExpensesDayCents(totalCents);
+  }, []);
 
   const addOtherRevenue = () => {
     const amount = parseCadInput(otherRevenueAmount);
@@ -1092,6 +1103,12 @@ export default function ComptabilitePage() {
                 </div>
               ))}
           </section>
+
+          <FixedExpensesJournalSection
+            actorId={actorId}
+            journalDate={selectedDate}
+            onTotalCentsChange={onFixedExpensesTotalChange}
+          />
 
           <label className="block card !p-4">
             <span className="text-sm font-medium text-slate-700">
