@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
-import { BarChart3, RefreshCw, Calendar } from "lucide-react";
+import { BarChart3, RefreshCw, Calendar, FileSpreadsheet } from "lucide-react";
 import type { PeriodReport } from "@/lib/accounting-period-report";
 import { formatCad } from "@/lib/money";
+import { PeriodReportDocument } from "@/components/accounting/PeriodReportDocument";
 
 type Props = {
   actorId: string | null;
@@ -19,6 +20,7 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
   const [report, setReport] = useState<PeriodReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showFullReport, setShowFullReport] = useState(false);
 
   const addHolidayDate = () => {
     const d = newHolidayDate.trim();
@@ -43,6 +45,7 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur");
       setReport(data as PeriodReport);
+      setShowFullReport(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur");
       setReport(null);
@@ -53,6 +56,12 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
 
   return (
     <div className="space-y-6">
+      {showFullReport && report && (
+        <PeriodReportDocument
+          report={report}
+          onClose={() => setShowFullReport(false)}
+        />
+      )}
       <div className="card space-y-4">
         <h2 className="font-semibold text-lg text-slate-800 flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-primary-500" />
@@ -64,7 +73,10 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
           saisissent dans l&apos;onglet <strong>Journal du jour</strong> et sont cumulées
           ici. Pour chaque <strong>date de jour férié</strong>, l&apos;indemnité suit la
           règle québécoise : <strong>1/20 du salaire brut</strong> sur les{" "}
-          <strong>4 semaines complètes</strong> avant la semaine du férié.
+          <strong>4 semaines complètes</strong> avant la semaine du férié. Après{" "}
+          <strong>Calculer</strong>, ouvrez le{" "}
+          <strong>rapport détaillé (style Excel)</strong> pour imprimer ou enregistrer
+          en PDF.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm block">
@@ -148,6 +160,16 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
       {report && (
         <>
           <div className="card space-y-3">
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setShowFullReport(true)}
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Rapport détaillé (style Excel)
+              </button>
+            </div>
             <p className="text-sm text-slate-500">
               {format(parseISO(report.from), "d MMM yyyy", { locale: fr })} →{" "}
               {format(parseISO(report.to), "d MMM yyyy", { locale: fr })} ·{" "}

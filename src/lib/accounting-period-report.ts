@@ -20,6 +20,24 @@ export type EducatorPeriodPayStats = {
   daysWorked: number;
 };
 
+export type EducatorPayrollDetail = {
+  educatorId: string;
+  educatorName: string;
+  totalHours: number;
+  totalGrossCents: number;
+  employerCotisationCents: number;
+  vacationIndemnityCents: number;
+  sickLeaveIndemnityCents: number;
+  holidayIndemnityCents: number;
+  vacationIndemnityPercent: 4 | 6;
+};
+
+export type ReportLineItem = {
+  label: string;
+  amountCents: number;
+  journalDate?: string;
+};
+
 export type PeriodReport = {
   from: string;
   to: string;
@@ -42,6 +60,9 @@ export type PeriodReport = {
   };
   netCents: number;
   educatorStats: EducatorPeriodPayStats[];
+  educatorPayroll: EducatorPayrollDetail[];
+  revenueLineItems: ReportLineItem[];
+  journalExpenseItems: ReportLineItem[];
   holidayIndemnityLines: HolidayIndemnityLine[];
   holidayIndemnitiesByEducator: EducatorHolidayIndemnitySummary[];
   fixedExpenses: {
@@ -129,20 +150,52 @@ export async function buildPeriodReport(options: {
     { name: string; gross: number; days: Set<string> }
   >();
 
+  const payrollMap = new Map<
+    string,
+    {
+      name: string;
+      hours: number;
+      gross: number;
+      cotisation: number;
+      vacation: number;
+      sick: number;
+      vacationPct: 4 | 6;
+    }
+  >();
+
+  let enrollmentInfantCents = 0;
+  let enrollmentOver18Cents = 0;
+  let enrollmentLegacyCents = 0;
+  const otherRevenueByLabel = new Map<string, number>();
+  const journalExpenseItems: ReportLineItem[] = [];
+
   for (const j of journals) {
     const dayKey = j.journalDate.toISOString().slice(0, 10);
     for (const line of j.lines) {
       if (line.kind === "revenue") {
         switch (line.category) {
-          case "revenue_enrollment":
           case "revenue_enrollment_infant":
+            enrollmentInfantCents += line.amountCents;
+            revenue.enrollmentCents += line.amountCents;
+            break;
           case "revenue_enrollment_over18":
+            enrollmentOver18Cents += line.amountCents;
+            revenue.enrollmentCents += line.amountCents;
+            break;
+          case "revenue_enrollment":
+            enrollmentLegacyCents += line.amountCents;
             revenue.enrollmentCents += line.amountCents;
             break;
           case "revenue_sortie":
           case "revenue_photo":
-          default:
+          default: {
             revenue.otherCents += line.amountCents;
+            const lbl = (line.label?.trim() || "Autre revenu").slice(0, 120);
+            otherRevenueByLabel.set(
+              lbl,
+              (otherRevenueByLabel.get(lbl) ?? 0) + line.amountCents
+            );
+          }
         }
         revenue.totalCents += line.amountCents;
       } else {
@@ -150,8 +203,9 @@ export async function buildPeriodReport(options: {
           case "expense_educator_gross":
             expenses.educatorGrossCents += line.amountCents;
             if (line.educatorId) {
-              const cur = educatorMap.get(line.educatorId) ?? {
-                name: line.educatorName ?? line.educatorId,
+              const id = line.educatorId;
+              const cur = educatorMap.get(id) ?? {
+                name: line.educatorName ?? id,
                 gross: 0,
                 days: new Set<string>(),
               };
@@ -159,17 +213,80 @@ export async function buildPeriodReport(options: {
               if (line.hoursWorked != null && line.hoursWorked > 0) {
                 cur.days.add(dayKey);
               }
-              educatorMap.set(line.educatorId, cur);
+              educatorMap.set(id, cur);
+
+              const pay = payrollMap.get(id) ?? {
+                name: line.educatorName ?? id,
+                hours: 0,
+                gross: 0,
+                cotisation: 0,
+                vacation: 0,
+                sick: 0,
+                vacationPct: 4 as 4 | 6,
+              };
+              pay.gross += line.amountCents;
+              if (line.hoursWorked != null && line.hoursWorked > 0) {
+                pay.hours += line.hoursWorked;
+              }
+              payrollMap.set(id, pay);
             }
             break;
           case "expense_employer_cotisation":
             expenses.employerCotisationCents += line.amountCents;
+            if (line.educatorId) {
+              const pay = payrollMap.get(line.educatorId) ?? {
+                name: line.educatorName ?? line.educatorId,
+                hours: 0,
+                gross: 0,
+                cotisation: 0,
+                vacation: 0,
+                sick: 0,
+                vacationPct: 4 as 4 | 6,
+              };
+              pay.cotisation += line.amountCents;
+              payrollMap.set(line.educatorId, pay);
+            }
             break;
           case "expense_vacation_indemnity":
             expenses.vacationIndemnityCents += line.amountCents;
+            if (line.educatorId) {
+              const pay = payrollMap.get(line.educatorId) ?? {
+                name: line.educatorName ?? line.educatorId,
+                hours: 0,
+                gross: 0,
+                cotisation: 0,
+                vacation: 0,
+                sick: 0,
+                vacationPct: 4 as 4 | 6,
+              };
+              pay.vacation += line.amountCents;
+              if (line.employerContributionPercent === 6) pay.vacationPct = 6;
+              payrollMap.set(line.educatorId, pay);
+            }
             break;
           case "expense_sick_leave_indemnity":
             expenses.sickLeaveIndemnityCents += line.amountCents;
+            if (line.educatorId) {
+              const pay = payrollMap.get(line.educatorId) ?? {
+                name: line.educatorName ?? line.educatorId,
+                hours: 0,
+                gross: 0,
+                cotisation: 0,
+                vacation: 0,
+                sick: 0,
+                vacationPct: 4 as 4 | 6,
+              };
+              pay.sick += line.amountCents;
+              payrollMap.set(line.educatorId, pay);
+            }
+            break;
+          case "expense_other":
+            expenses.otherDailyCents += line.amountCents;
+            journalExpenseItems.push({
+              label: line.label?.trim() || "Autre dépense",
+              amountCents: line.amountCents,
+              journalDate: dayKey,
+            });
             break;
           default:
             expenses.otherDailyCents += line.amountCents;
@@ -187,6 +304,31 @@ export async function buildPeriodReport(options: {
     totalGrossCents: v.gross,
     daysWorked: v.days.size,
   }));
+
+  const revenueLineItems: ReportLineItem[] = [];
+  if (enrollmentInfantCents > 0) {
+    revenueLineItems.push({
+      label: "Inscriptions — poupon (6–18 mois)",
+      amountCents: enrollmentInfantCents,
+    });
+  }
+  if (enrollmentOver18Cents > 0) {
+    revenueLineItems.push({
+      label: "Inscriptions — 18 mois et plus",
+      amountCents: enrollmentOver18Cents,
+    });
+  }
+  if (enrollmentLegacyCents > 0) {
+    revenueLineItems.push({
+      label: "Inscriptions (tarif unique)",
+      amountCents: enrollmentLegacyCents,
+    });
+  }
+  for (const [label, amountCents] of Array.from(otherRevenueByLabel.entries()).sort(
+    (a, b) => a[0].localeCompare(b[0], "fr")
+  )) {
+    revenueLineItems.push({ label, amountCents });
+  }
 
   let holidayIndemnityLines: HolidayIndemnityLine[] = [];
   let holidayIndemnitiesByEducator: EducatorHolidayIndemnitySummary[] = [];
@@ -237,6 +379,26 @@ export async function buildPeriodReport(options: {
   expenses.totalCents += expenses.statutoryHolidayCents + expenses.fixedExpensesCents;
   const netCents = revenue.totalCents - expenses.totalCents;
 
+  const holidayByEducator = new Map(
+    holidayIndemnitiesByEducator.map((h) => [h.educatorId, h.totalIndemnityCents])
+  );
+
+  const educatorPayroll: EducatorPayrollDetail[] = Array.from(
+    payrollMap.entries()
+  )
+    .map(([educatorId, p]) => ({
+      educatorId,
+      educatorName: p.name,
+      totalHours: Math.round(p.hours * 100) / 100,
+      totalGrossCents: p.gross,
+      employerCotisationCents: p.cotisation,
+      vacationIndemnityCents: p.vacation,
+      sickLeaveIndemnityCents: p.sick,
+      holidayIndemnityCents: holidayByEducator.get(educatorId) ?? 0,
+      vacationIndemnityPercent: p.vacationPct,
+    }))
+    .sort((a, b) => a.educatorName.localeCompare(b.educatorName, "fr"));
+
   return {
     from: options.fromStr,
     to: options.toStr,
@@ -246,6 +408,9 @@ export async function buildPeriodReport(options: {
     expenses,
     netCents,
     educatorStats,
+    educatorPayroll,
+    revenueLineItems,
+    journalExpenseItems,
     holidayIndemnityLines,
     holidayIndemnitiesByEducator,
     fixedExpenses,
