@@ -27,7 +27,10 @@ import {
   CalendarDays,
   Lock,
 } from "lucide-react";
-import { canAccessComptabilite } from "@/lib/accounting-staff";
+import {
+  canAccessComptabilite,
+  canViewComptabiliteSalaryDetails,
+} from "@/lib/accounting-staff";
 import { isFullAdmin } from "@/lib/staff-actor";
 import { canModifyLockedJournalDay } from "@/lib/journal-day-editors";
 import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
@@ -172,6 +175,11 @@ export default function ComptabilitePage() {
   );
 
   const isAdminUser = useMemo(() => isFullAdmin(sessionUser), [sessionUser]);
+
+  const canViewSalaryDetails = useMemo(
+    () => canViewComptabiliteSalaryDetails(sessionUser),
+    [sessionUser]
+  );
 
   const journalReadOnly = journalLocked && !editUnlocked;
 
@@ -742,7 +750,7 @@ export default function ComptabilitePage() {
           <Wallet className="h-6 w-6 text-primary-500" />
           Journal du jour
         </h1>
-        {mainView === "journal" && (
+        {mainView === "journal" && canViewSalaryDetails && (
           <button
             type="button"
             onClick={() => setShowSettings((s) => !s)}
@@ -781,7 +789,12 @@ export default function ComptabilitePage() {
         </button>
       </div>
 
-      {mainView === "period" && <PeriodAnalysisPanel actorId={actorId} />}
+      {mainView === "period" && (
+        <PeriodAnalysisPanel
+          actorId={actorId}
+          showSalaryDetails={canViewSalaryDetails}
+        />
+      )}
 
       {mainView === "journal" && (
         <>
@@ -1186,9 +1199,15 @@ export default function ComptabilitePage() {
               Heures &amp; paie
             </h2>
             <p className="text-sm text-slate-600">
-              Entrez les heures travaillées : le <strong>salaire brut</strong> du jour
-              sert de base aux cotisations employeur (RRQ, AE, RQAP, FSS, CNESST), à
-              l&apos;indemnité vacances (4 % ou 6 %) et à la provision maladie (0,8 %).
+              {canViewSalaryDetails ? (
+                <>
+                  Entrez les heures travaillées : le <strong>salaire brut</strong> du jour
+                  sert de base aux cotisations employeur (RRQ, AE, RQAP, FSS, CNESST), à
+                  l&apos;indemnité vacances (4 % ou 6 %) et à la provision maladie (0,8 %).
+                </>
+              ) : (
+                <>Entrez les heures travaillées pour chaque membre du personnel.</>
+              )}
             </p>
             <PresencePdfImportPanel
               actorId={actorId}
@@ -1232,19 +1251,24 @@ export default function ComptabilitePage() {
                   return (
                     <div
                       key={edu.id}
-                      className="grid gap-2 sm:grid-cols-[1fr_6rem_1fr] items-center rounded-xl border border-slate-100 p-3"
+                      className={`grid gap-2 items-center rounded-xl border border-slate-100 p-3 ${
+                        canViewSalaryDetails
+                          ? "sm:grid-cols-[1fr_6rem_1fr]"
+                          : "sm:grid-cols-[1fr_6rem]"
+                      }`}
                     >
                       <span className="font-medium text-slate-800 text-sm">
                         {edu.name}
-                        {rate > 0 ? (
-                          <span className="text-slate-500 font-normal ml-1">
-                            ({formatCad(rate)}/h)
-                          </span>
-                        ) : (
-                          <span className="text-amber-600 text-xs ml-1">
-                            — taux à définir
-                          </span>
-                        )}
+                        {canViewSalaryDetails &&
+                          (rate > 0 ? (
+                            <span className="text-slate-500 font-normal ml-1">
+                              ({formatCad(rate)}/h)
+                            </span>
+                          ) : (
+                            <span className="text-amber-600 text-xs ml-1">
+                              — taux à définir
+                            </span>
+                          ))}
                       </span>
                       <input
                         className="input-field !py-2 !min-h-0 text-center"
@@ -1260,36 +1284,38 @@ export default function ComptabilitePage() {
                           }))
                         }
                       />
-                      <span className="text-xs sm:text-sm text-slate-600 block">
-                        {gross > 0 && cotResult ? (
-                          <>
-                            Brut {formatCad(gross)}
-                            {cotResult.totalCents > 0 && (
-                              <>
-                                {" "}
-                                · Cotis. {formatCad(cotResult.totalCents)}
-                                {cotResult.breakdown && (
-                                  <span className="block text-[11px] text-slate-500 mt-0.5">
-                                    RRQ {formatCad(cotResult.breakdown.rrqCents)} · AE{" "}
-                                    {formatCad(cotResult.breakdown.aeCents)} · RQAP{" "}
-                                    {formatCad(cotResult.breakdown.rqapCents)} · FSS{" "}
-                                    {formatCad(cotResult.breakdown.fssCents)} · CNESST{" "}
-                                    {formatCad(cotResult.breakdown.cnesstCents)}
-                                  </span>
-                                )}
-                              </>
-                            )}
-                            {vacCents > 0 && (
-                              <span className="block text-[11px] text-slate-500">
-                                Vacances {vacPct} % : {formatCad(vacCents)} · Maladie 0,8
-                                % : {formatCad(sickCents)}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </span>
+                      {canViewSalaryDetails && (
+                        <span className="text-xs sm:text-sm text-slate-600 block">
+                          {gross > 0 && cotResult ? (
+                            <>
+                              Brut {formatCad(gross)}
+                              {cotResult.totalCents > 0 && (
+                                <>
+                                  {" "}
+                                  · Cotis. {formatCad(cotResult.totalCents)}
+                                  {cotResult.breakdown && (
+                                    <span className="block text-[11px] text-slate-500 mt-0.5">
+                                      RRQ {formatCad(cotResult.breakdown.rrqCents)} · AE{" "}
+                                      {formatCad(cotResult.breakdown.aeCents)} · RQAP{" "}
+                                      {formatCad(cotResult.breakdown.rqapCents)} · FSS{" "}
+                                      {formatCad(cotResult.breakdown.fssCents)} · CNESST{" "}
+                                      {formatCad(cotResult.breakdown.cnesstCents)}
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                              {vacCents > 0 && (
+                                <span className="block text-[11px] text-slate-500">
+                                  Vacances {vacPct} % : {formatCad(vacCents)} · Maladie 0,8
+                                  % : {formatCad(sickCents)}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            "—"
+                          )}
+                        </span>
+                      )}
                     </div>
                   );
                 })

@@ -10,9 +10,14 @@ import { PeriodReportDocument } from "@/components/accounting/PeriodReportDocume
 
 type Props = {
   actorId: string | null;
+  /** Détails paie (salaires, cotisations, fériés par employée) — admin seulement. */
+  showSalaryDetails?: boolean;
 };
 
-export function PeriodAnalysisPanel({ actorId }: Props) {
+export function PeriodAnalysisPanel({
+  actorId,
+  showSalaryDetails = true,
+}: Props) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [holidayDates, setHolidayDates] = useState<string[]>([]);
@@ -59,6 +64,7 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
       {showFullReport && report && (
         <PeriodReportDocument
           report={report}
+          showSalaryDetails={showSalaryDetails}
           onClose={() => setShowFullReport(false)}
         />
       )}
@@ -187,14 +193,26 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
               </div>
               <div className="rounded-xl bg-rose-50 border border-rose-100 p-4 space-y-1 text-sm">
                 <p className="font-semibold text-rose-900">Dépenses</p>
-                <p>Salaires bruts : {formatCad(report.expenses.educatorGrossCents)}</p>
-                <p>Cotisations employeur : {formatCad(report.expenses.employerCotisationCents)}</p>
-                <p>Indemnités vacances : {formatCad(report.expenses.vacationIndemnityCents)}</p>
-                <p>Maladie (0,8 %) : {formatCad(report.expenses.sickLeaveIndemnityCents)}</p>
-                <p>
-                  Jours fériés (1/20 × 4 sem.) :{" "}
-                  {formatCad(report.expenses.statutoryHolidayCents)}
-                </p>
+                {showSalaryDetails ? (
+                  <>
+                    <p>Salaires bruts : {formatCad(report.expenses.educatorGrossCents)}</p>
+                    <p>
+                      Cotisations employeur :{" "}
+                      {formatCad(report.expenses.employerCotisationCents)}
+                    </p>
+                    <p>
+                      Indemnités vacances :{" "}
+                      {formatCad(report.expenses.vacationIndemnityCents)}
+                    </p>
+                    <p>
+                      Maladie (0,8 %) : {formatCad(report.expenses.sickLeaveIndemnityCents)}
+                    </p>
+                    <p>
+                      Jours fériés (1/20 × 4 sem.) :{" "}
+                      {formatCad(report.expenses.statutoryHolidayCents)}
+                    </p>
+                  </>
+                ) : null}
                 <p>Autres (journal) : {formatCad(report.expenses.otherDailyCents)}</p>
                 <p>
                   5. Dépenses fixes : {formatCad(report.expenses.fixedExpensesCents)}
@@ -234,7 +252,7 @@ export function PeriodAnalysisPanel({ actorId }: Props) {
             </div>
           )}
 
-          {report.holidayIndemnityLines.length > 0 && (
+          {showSalaryDetails && report.holidayIndemnityLines.length > 0 && (
             <div className="card overflow-x-auto">
               <h3 className="font-semibold text-slate-800 mb-3">
                 Détail indemnités jours fériés (Québec)

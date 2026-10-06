@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findAccountingActor } from "@/lib/accounting-staff";
+import {
+  canViewComptabiliteSalaryDetails,
+  findAccountingActor,
+} from "@/lib/accounting-staff";
 import { getEducators } from "@/lib/store";
 import {
   ensureAccountingConfig,
@@ -41,8 +44,15 @@ export async function PUT(request: NextRequest) {
         ? body._actorEducatorId.trim()
         : "";
     const educators = await getEducators();
-    if (!findAccountingActor(educators, actorId)) {
+    const actor = findAccountingActor(educators, actorId);
+    if (!actor) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+    }
+    if (!canViewComptabiliteSalaryDetails(actor)) {
+      return NextResponse.json(
+        { error: "Réservé à l'administrateur." },
+        { status: 403 }
+      );
     }
 
     const updates: {

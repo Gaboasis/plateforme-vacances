@@ -9,6 +9,7 @@ import { formatCad } from "@/lib/money";
 type Props = {
   report: PeriodReport;
   onClose: () => void;
+  showSalaryDetails?: boolean;
 };
 
 function escapeHtml(s: string): string {
@@ -97,7 +98,11 @@ function ReportTable({
   );
 }
 
-export function PeriodReportDocument({ report, onClose }: Props) {
+export function PeriodReportDocument({
+  report,
+  onClose,
+  showSalaryDetails = true,
+}: Props) {
   const periodLabel = `${format(parseISO(report.from), "d MMMM yyyy", { locale: fr })} — ${format(parseISO(report.to), "d MMMM yyyy", { locale: fr })}`;
 
   const payroll = report.educatorPayroll ?? [];
@@ -159,15 +164,28 @@ export function PeriodReportDocument({ report, onClose }: Props) {
         ])
       : [["—", "Aucune autre dépense au journal", "—"]];
 
-  const expenseSummaryRows: (string | number)[][] = [
-    ["Salaires bruts (éducatrices)", formatCad(report.expenses.educatorGrossCents)],
-    ["Cotisations employeur (QC)", formatCad(report.expenses.employerCotisationCents)],
-    ["Indemnités vacances", formatCad(report.expenses.vacationIndemnityCents)],
-    ["Provision maladie (0,8 %)", formatCad(report.expenses.sickLeaveIndemnityCents)],
-    ["Indemnités jours fériés", formatCad(report.expenses.statutoryHolidayCents)],
-    ["Autres dépenses (journal)", formatCad(report.expenses.otherDailyCents)],
-    ["Dépenses fixes", formatCad(report.expenses.fixedExpensesCents)],
-  ];
+  const payrollTotalCents =
+    report.expenses.educatorGrossCents +
+    report.expenses.employerCotisationCents +
+    report.expenses.vacationIndemnityCents +
+    report.expenses.sickLeaveIndemnityCents +
+    report.expenses.statutoryHolidayCents;
+
+  const expenseSummaryRows: (string | number)[][] = showSalaryDetails
+    ? [
+        ["Salaires bruts (éducatrices)", formatCad(report.expenses.educatorGrossCents)],
+        ["Cotisations employeur (QC)", formatCad(report.expenses.employerCotisationCents)],
+        ["Indemnités vacances", formatCad(report.expenses.vacationIndemnityCents)],
+        ["Provision maladie (0,8 %)", formatCad(report.expenses.sickLeaveIndemnityCents)],
+        ["Indemnités jours fériés", formatCad(report.expenses.statutoryHolidayCents)],
+        ["Autres dépenses (journal)", formatCad(report.expenses.otherDailyCents)],
+        ["Dépenses fixes", formatCad(report.expenses.fixedExpensesCents)],
+      ]
+    : [
+        ["Charges de personnel (total)", formatCad(payrollTotalCents)],
+        ["Autres dépenses (journal)", formatCad(report.expenses.otherDailyCents)],
+        ["Dépenses fixes", formatCad(report.expenses.fixedExpensesCents)],
+      ];
 
   const openPrintWindow = () => {
     const root = document.getElementById("period-report-document-body");
@@ -253,28 +271,32 @@ export function PeriodReportDocument({ report, onClose }: Props) {
             </p>
           </div>
 
-          <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
-            2 — Salaires et charges par employée
-          </h2>
-          <div className="overflow-x-auto mt-3">
-            <ReportTable
-              headers={[
-                { label: "Employée" },
-                { label: "Heures", align: "right" },
-                { label: "Salaire brut", align: "right" },
-                { label: "Vac." },
-                { label: "Indem. vacances", align: "right" },
-                { label: "Maladie 0,8 %", align: "right" },
-                { label: "Cotis. employeur", align: "right" },
-                { label: "Fériés", align: "right" },
-              ]}
-              rows={payrollRows}
-              foot={payrollFoot}
-            />
-          </div>
+          {showSalaryDetails && (
+            <>
+              <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
+                2 — Salaires et charges par employée
+              </h2>
+              <div className="overflow-x-auto mt-3">
+                <ReportTable
+                  headers={[
+                    { label: "Employée" },
+                    { label: "Heures", align: "right" },
+                    { label: "Salaire brut", align: "right" },
+                    { label: "Vac." },
+                    { label: "Indem. vacances", align: "right" },
+                    { label: "Maladie 0,8 %", align: "right" },
+                    { label: "Cotis. employeur", align: "right" },
+                    { label: "Fériés", align: "right" },
+                  ]}
+                  rows={payrollRows}
+                  foot={payrollFoot}
+                />
+              </div>
+            </>
+          )}
 
           <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
-            3 — Revenus détaillés
+            {showSalaryDetails ? "3 — Revenus détaillés" : "2 — Revenus détaillés"}
           </h2>
           <div className="mt-3">
             <ReportTable
@@ -288,7 +310,7 @@ export function PeriodReportDocument({ report, onClose }: Props) {
           </div>
 
           <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
-            4 — Autres dépenses (journal)
+            {showSalaryDetails ? "4 — Autres dépenses (journal)" : "3 — Autres dépenses (journal)"}
           </h2>
           <div className="mt-3">
             <ReportTable
@@ -307,7 +329,7 @@ export function PeriodReportDocument({ report, onClose }: Props) {
           </div>
 
           <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
-            5 — Dépenses fixes
+            {showSalaryDetails ? "5 — Dépenses fixes" : "4 — Dépenses fixes"}
           </h2>
           <div className="mt-3">
             <ReportTable
@@ -327,7 +349,7 @@ export function PeriodReportDocument({ report, onClose }: Props) {
             />
           </div>
 
-          {report.holidayIndemnityLines.length > 0 && (
+          {showSalaryDetails && report.holidayIndemnityLines.length > 0 && (
             <>
               <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
                 6 — Détail jours fériés (Québec)
