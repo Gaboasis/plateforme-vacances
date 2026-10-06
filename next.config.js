@@ -1,4 +1,8 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {}
+const nextConfig = {
+  experimental: {
+    serverComponentsExternalPackages: ["pdf-parse", "pdfjs-dist"],
+  },
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

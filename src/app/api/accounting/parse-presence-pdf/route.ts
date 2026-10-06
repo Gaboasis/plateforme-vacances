@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFParse } from "pdf-parse";
+import { ensurePdfJsWorker } from "@/lib/pdf-parse-worker";
 import { findAccountingActor } from "@/lib/accounting-staff";
 import { buildPresenceImport } from "@/lib/parse-presence-pdf";
 import { getEducatorPaySummaries } from "@/lib/store-accounting";
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    ensurePdfJsWorker();
     const buffer = Buffer.from(await file.arrayBuffer());
     const parser = new PDFParse({ data: buffer });
     let text = "";
