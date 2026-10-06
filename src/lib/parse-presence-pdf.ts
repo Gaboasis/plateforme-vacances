@@ -29,6 +29,8 @@ const PDF_NAME_ALIASES: Record<string, string> = {
   amneh: "amineh",
   aysha: "aicha",
   zoukaa: "zooka",
+  chaima: "shaima",
+  shaima: "shaima",
 };
 
 function normalizeToken(s: string): string {

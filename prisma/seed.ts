@@ -43,6 +43,53 @@ const getPassword = (edu: (typeof educators)[number], index: number): string => 
   return `garderie${101 + index * 3}`;
 };
 
+/** Comptes récemment ajoutés : profil + mot de passe initial garantis au seed (sans écraser un mot de passe existant). */
+const BOOTSTRAP_EDUCATOR_IDS = new Set(["nabila", "shaima"]);
+
+async function ensureBootstrapEducators() {
+  for (let i = 0; i < educators.length; i++) {
+    const edu = educators[i];
+    if (!BOOTSTRAP_EDUCATOR_IDS.has(edu.id)) continue;
+    if (edu.role !== "educatrice" || !("seniorityRank" in edu)) continue;
+
+    const password = getPassword(edu, i);
+    const existing = await prisma.educator.findUnique({ where: { id: edu.id } });
+    const profile = {
+      name: edu.name,
+      email: edu.email,
+      role: edu.role,
+      seniorityRank: edu.seniorityRank,
+      isQualified: edu.isQualified,
+    };
+
+    if (!existing) {
+      const passwordHash = bcrypt.hashSync(password, 10);
+      await prisma.educator.create({
+        data: { id: edu.id, ...profile, passwordHash },
+      });
+      console.log(
+        `Profil ${edu.name} (${edu.id}) créé — mot de passe initial : ${password}`
+      );
+      continue;
+    }
+
+    const needsPassword = !existing.passwordHash;
+    await prisma.educator.update({
+      where: { id: edu.id },
+      data: needsPassword
+        ? { ...profile, passwordHash: bcrypt.hashSync(password, 10) }
+        : profile,
+    });
+    if (needsPassword) {
+      console.log(
+        `Profil ${edu.name} (${edu.id}) — mot de passe initial défini : ${password}`
+      );
+    } else {
+      console.log(`Profil ${edu.name} (${edu.id}) synchronisé (mot de passe conservé)`);
+    }
+  }
+}
+
 const defaultRules = {
   maxConcurrentVacations: 2,
   minAdvanceNoticeDays: 14,
@@ -155,8 +202,11 @@ async function ensurePrePlatformVacations() {
 async function main() {
   await removeLegacyEducator12();
 
+  await ensureBootstrapEducators();
+
   for (let i = 0; i < educators.length; i++) {
     const edu = educators[i];
+    if (BOOTSTRAP_EDUCATOR_IDS.has(edu.id)) continue;
     const existing = await prisma.educator.findUnique({
       where: { id: edu.id },
     });
