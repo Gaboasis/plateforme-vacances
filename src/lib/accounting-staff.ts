@@ -1,17 +1,42 @@
 import type { Educator } from "@/types";
-import { isLoubabaJournalEditor } from "./journal-day-editors";
-import { isFullAdmin, isSecretaryInboxStaff } from "./staff-actor";
+import {
+  KAMAR_SECRETARY_SWAP_ID,
+  LOUBABA_EDUCATOR_ID,
+} from "./kamar-loubaba-swap";
+import { KAMAR_SECRETARY_INBOX_EMAIL } from "./staff-actor";
 
-/** Journal comptable : admin, secrétaire (Kamar), Loubaba. */
-export function isAccountingStaff(
+export const LOUBABA_COMPTABILITE_EMAIL = "loubaba@garderie.fr";
+
+/** Accès comptabilité : uniquement Admin, Kamar et Loubaba (liste fermée). */
+export function isKamarComptabilite(
+  e: Pick<Educator, "id" | "email"> | undefined | null
+): boolean {
+  if (!e) return false;
+  if (e.id === KAMAR_SECRETARY_SWAP_ID) return true;
+  return e.email?.trim().toLowerCase() === KAMAR_SECRETARY_INBOX_EMAIL;
+}
+
+export function isLoubabaComptabilite(
+  e: Pick<Educator, "id" | "email"> | undefined | null
+): boolean {
+  if (!e) return false;
+  if (e.id === LOUBABA_EDUCATOR_ID) return true;
+  return e.email?.trim().toLowerCase() === LOUBABA_COMPTABILITE_EMAIL;
+}
+
+export function canAccessComptabilite(
   e: Pick<Educator, "id" | "role" | "email"> | undefined | null
 ): boolean {
   if (!e) return false;
-  return (
-    isFullAdmin(e) ||
-    isSecretaryInboxStaff(e) ||
-    isLoubabaJournalEditor(e)
-  );
+  if (e.role === "admin") return true;
+  return isKamarComptabilite(e) || isLoubabaComptabilite(e);
+}
+
+/** @deprecated Alias — préférer `canAccessComptabilite`. */
+export function isAccountingStaff(
+  e: Pick<Educator, "id" | "role" | "email"> | undefined | null
+): boolean {
+  return canAccessComptabilite(e);
 }
 
 export function findAccountingActor(
@@ -20,6 +45,6 @@ export function findAccountingActor(
 ): Pick<Educator, "id" | "role" | "name"> | undefined {
   if (!actorId?.trim()) return undefined;
   const e = educators.find((x) => x.id === actorId.trim());
-  if (!e || !isAccountingStaff(e)) return undefined;
+  if (!e || !canAccessComptabilite(e)) return undefined;
   return e;
 }

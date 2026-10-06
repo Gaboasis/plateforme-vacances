@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   format,
   parseISO,
@@ -26,6 +27,7 @@ import {
   CalendarDays,
   Lock,
 } from "lucide-react";
+import { canAccessComptabilite } from "@/lib/accounting-staff";
 import { canModifyLockedJournalDay } from "@/lib/journal-day-editors";
 import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
 import { FixedExpensesJournalSection } from "@/components/accounting/FixedExpensesJournalSection";
@@ -105,6 +107,7 @@ function enrollmentTotalCents(countStr: string, rateInput: string): number {
 }
 
 export default function ComptabilitePage() {
+  const router = useRouter();
   const [mainView, setMainView] = useState<"journal" | "period">("journal");
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [config, setConfig] = useState<AccountingConfig | null>(null);
@@ -148,11 +151,15 @@ export default function ComptabilitePage() {
     if (typeof window === "undefined") return;
     try {
       const u = JSON.parse(sessionStorage.getItem("user") || "null") as Educator | null;
-      setSessionUser(u?.id ? u : null);
+      if (!u?.id || !canAccessComptabilite(u)) {
+        router.replace(u?.role === "admin" ? "/admin" : "/dashboard");
+        return;
+      }
+      setSessionUser(u);
     } catch {
-      setSessionUser(null);
+      router.replace("/");
     }
-  }, []);
+  }, [router]);
 
   const canModifyLockedDay = useMemo(
     () => canModifyLockedJournalDay(sessionUser),
@@ -173,12 +180,16 @@ export default function ComptabilitePage() {
     editPasswordRef.current = null;
   }, []);
 
-  const loadDay = useCallback(async (date: string) => {
+  const loadDay = useCallback(async (date: string, forActorId: string) => {
     setLoading(true);
     setSaveMsg("idle");
     resetEditSession();
     try {
-      const res = await fetch(`/api/accounting/journal?date=${encodeURIComponent(date)}`);
+      const q = new URLSearchParams({
+        date,
+        _actorEducatorId: forActorId,
+      });
+      const res = await fetch(`/api/accounting/journal?${q}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Chargement impossible");
 
@@ -266,9 +277,11 @@ export default function ComptabilitePage() {
       }
 
       const month = date.slice(0, 7);
-      const monthRes = await fetch(
-        `/api/accounting/journal?month=${encodeURIComponent(month)}`
-      );
+      const monthQ = new URLSearchParams({
+        month,
+        _actorEducatorId: forActorId,
+      });
+      const monthRes = await fetch(`/api/accounting/journal?${monthQ}`);
       const monthData = await monthRes.json();
       setMonthSummaries(
         Array.isArray(monthData.summaries) ? monthData.summaries : []
@@ -282,8 +295,9 @@ export default function ComptabilitePage() {
   }, [resetEditSession]);
 
   useEffect(() => {
-    loadDay(selectedDate);
-  }, [selectedDate, loadDay]);
+    if (!actorId) return;
+    loadDay(selectedDate, actorId);
+  }, [selectedDate, loadDay, actorId]);
 
   const infantRevenueCents = useMemo(
     () => enrollmentTotalCents(infantCount, infantRateInput),
@@ -548,7 +562,7 @@ export default function ComptabilitePage() {
       setPasswordModalOpen(false);
       setPasswordModalForSave(false);
       setEditPasswordInput("");
-      await loadDay(selectedDate);
+      if (actorId) await loadDay(selectedDate, actorId);
     } catch (e) {
       setSaveMsg("err");
       if (e instanceof Error && journalLocked) {
@@ -650,11 +664,11 @@ export default function ComptabilitePage() {
     <div className="space-y-6 pb-24">
       <div className="flex flex-wrap items-center gap-3">
         <Link
-          href="/admin"
+          href={sessionUser?.role === "admin" ? "/admin" : "/dashboard"}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           <ArrowLeft className="h-4 w-4" />
-          Demandes
+          {sessionUser?.role === "admin" ? "Demandes" : "Retour"}
         </Link>
         <h1 className="font-display text-xl sm:text-2xl font-semibold text-slate-900 flex items-center gap-2">
           <Wallet className="h-6 w-6 text-primary-500" />

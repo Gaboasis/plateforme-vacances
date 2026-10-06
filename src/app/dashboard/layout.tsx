@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Calendar, LogOut, Home, ArrowLeft, Lock, Inbox, Wallet } from "lucide-react";
 import type { Educator } from "@/types";
-import { isAccountingStaff } from "@/lib/accounting-staff";
+import { canAccessComptabilite } from "@/lib/accounting-staff";
 import { isSecretaryInboxStaff } from "@/lib/staff-actor";
 
 export default function DashboardLayout({
@@ -116,7 +116,7 @@ export default function DashboardLayout({
 
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <p className="hidden sm:block text-sm font-medium text-slate-800">{user.name}</p>
-            {isAccountingStaff(user) && user.role !== "admin" && (
+            {canAccessComptabilite(user) && user.role !== "admin" && (
               <Link
                 href="/admin/comptabilite"
                 className="flex items-center gap-1 rounded-lg p-2.5 sm:px-3 sm:py-2 text-slate-600 transition-colors hover:bg-primary-50 hover:text-primary-700 touch-manipulation"

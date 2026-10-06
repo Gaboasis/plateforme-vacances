@@ -7,8 +7,13 @@ import {
 } from "@/lib/store-accounting";
 import type { EmployerContributionMethod } from "@/types";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const actorId = request.nextUrl.searchParams.get("_actorEducatorId")?.trim();
+    const educators = await getEducators();
+    if (!findAccountingActor(educators, actorId)) {
+      return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+    }
     const config = await ensureAccountingConfig();
     return NextResponse.json(config);
   } catch {

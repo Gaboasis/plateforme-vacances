@@ -13,6 +13,12 @@ import { assertCanEditLockedJournalDay } from "@/lib/verify-journal-day-edit";
 
 export async function GET(request: NextRequest) {
   try {
+    const actorId = request.nextUrl.searchParams.get("_actorEducatorId")?.trim();
+    const educators = await getEducators();
+    if (!findAccountingActor(educators, actorId)) {
+      return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+    }
+
     const date = request.nextUrl.searchParams.get("date");
     const month = request.nextUrl.searchParams.get("month");
 
