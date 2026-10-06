@@ -32,6 +32,8 @@ import { isFullAdmin } from "@/lib/staff-actor";
 import { canModifyLockedJournalDay } from "@/lib/journal-day-editors";
 import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
 import { FixedExpensesJournalSection } from "@/components/accounting/FixedExpensesJournalSection";
+import { PresencePdfImportPanel } from "@/components/accounting/PresencePdfImportPanel";
+import type { PresenceParseResult } from "@/lib/parse-presence-pdf";
 import type {
   AccountingConfig,
   DailyJournal,
@@ -138,6 +140,7 @@ export default function ComptabilitePage() {
   const [editPasswordInput, setEditPasswordInput] = useState("");
   const [editPasswordError, setEditPasswordError] = useState("");
   const editPasswordRef = useRef<string | null>(null);
+  const pendingPresenceImportRef = useRef<PresenceParseResult | null>(null);
   const [monthSummaries, setMonthSummaries] = useState<
     {
       journalDate: string;
@@ -302,6 +305,42 @@ export default function ComptabilitePage() {
     if (!actorId) return;
     loadDay(selectedDate, actorId);
   }, [selectedDate, loadDay, actorId]);
+
+  useEffect(() => {
+    if (loading || !pendingPresenceImportRef.current) return;
+    const pending = pendingPresenceImportRef.current;
+    pendingPresenceImportRef.current = null;
+    const next: Record<string, string> = {};
+    for (const row of pending.rows) {
+      next[row.educatorId] = String(row.hours);
+    }
+    setHoursDraft((prev) => ({ ...prev, ...next }));
+  }, [loading, selectedDate]);
+
+  const applyPresenceImport = useCallback(
+    (result: PresenceParseResult) => {
+      if (
+        result.journalDate &&
+        result.journalDate !== selectedDate &&
+        !window.confirm(
+          `Le PDF correspond au ${result.journalDate}, pas au jour affiché (${selectedDate}). Ouvrir cette date et appliquer les heures ?`
+        )
+      ) {
+        return;
+      }
+      if (result.journalDate && result.journalDate !== selectedDate) {
+        pendingPresenceImportRef.current = result;
+        setSelectedDate(result.journalDate);
+        return;
+      }
+      const next: Record<string, string> = {};
+      for (const row of result.rows) {
+        next[row.educatorId] = String(row.hours);
+      }
+      setHoursDraft((prev) => ({ ...prev, ...next }));
+    },
+    [selectedDate]
+  );
 
   const infantRevenueCents = useMemo(
     () => enrollmentTotalCents(infantCount, infantRateInput),
@@ -1151,6 +1190,12 @@ export default function ComptabilitePage() {
               sert de base aux cotisations employeur (RRQ, AE, RQAP, FSS, CNESST), à
               l&apos;indemnité vacances (4 % ou 6 %) et à la provision maladie (0,8 %).
             </p>
+            <PresencePdfImportPanel
+              actorId={actorId}
+              selectedDate={selectedDate}
+              readOnly={journalReadOnly}
+              onApplyHours={applyPresenceImport}
+            />
             <div className="space-y-2">
               {payRates.length === 0 ? (
                 <p className="text-sm text-slate-500">Aucun profil paie configuré.</p>
