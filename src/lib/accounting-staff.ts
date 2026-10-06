@@ -32,7 +32,7 @@ export function canAccessComptabilite(
   return isKamarComptabilite(e) || isLoubabaComptabilite(e);
 }
 
-/** Taux horaires, brut, cotisations et rapports paie détaillés — admin uniquement. */
+/** Taux horaires, tarifs inscriptions, brut, cotisations et rapports paie détaillés — admin uniquement. */
 export function canViewComptabiliteSalaryDetails(
   e: Pick<Educator, "role"> | undefined | null
 ): boolean {

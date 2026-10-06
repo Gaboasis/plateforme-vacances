@@ -1,3 +1,7 @@
+import {
+  DEFAULT_DAILY_INFANT_RATE_CENTS,
+  DEFAULT_DAILY_OVER18_RATE_CENTS,
+} from "./default-enrollment-rates";
 import { prisma } from "./db";
 import type {
   AccountingConfig,
@@ -110,9 +114,9 @@ export async function ensureAccountingConfig(): Promise<AccountingConfig> {
     where: { id: "default" },
     create: {
       id: "default",
-      dailyChildRateCents: 4500,
-      dailyInfantRateCents: 5200,
-      dailyOver18RateCents: 4500,
+      dailyChildRateCents: DEFAULT_DAILY_OVER18_RATE_CENTS,
+      dailyInfantRateCents: DEFAULT_DAILY_INFANT_RATE_CENTS,
+      dailyOver18RateCents: DEFAULT_DAILY_OVER18_RATE_CENTS,
       employerContributionMethod: "quebec_statutory",
       defaultEmployerContributionPercent: 18,
       qcRrqEmployerPercent: 6.3,

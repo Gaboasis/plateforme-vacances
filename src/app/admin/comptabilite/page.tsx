@@ -45,6 +45,10 @@ import type {
   JournalLine,
 } from "@/types";
 import {
+  DEFAULT_DAILY_INFANT_RATE_CENTS,
+  DEFAULT_DAILY_OVER18_RATE_CENTS,
+} from "@/lib/default-enrollment-rates";
+import {
   centsToDollars,
   computeGrossFromHours,
   formatCad,
@@ -71,8 +75,8 @@ function todayIso() {
 
 function normalizeAccountingConfig(raw: Partial<AccountingConfig> | null): AccountingConfig {
   return {
-    dailyInfantRateCents: raw?.dailyInfantRateCents ?? 5200,
-    dailyOver18RateCents: raw?.dailyOver18RateCents ?? 4500,
+    dailyInfantRateCents: raw?.dailyInfantRateCents ?? DEFAULT_DAILY_INFANT_RATE_CENTS,
+    dailyOver18RateCents: raw?.dailyOver18RateCents ?? DEFAULT_DAILY_OVER18_RATE_CENTS,
     dailyChildRateCents: raw?.dailyChildRateCents,
     employerContributionMethod:
       raw?.employerContributionMethod === "flat_percent"
@@ -92,8 +96,8 @@ function normalizeAccountingConfig(raw: Partial<AccountingConfig> | null): Accou
 
 function defaultPayrollConfig(): AccountingConfig {
   return {
-    dailyInfantRateCents: 5200,
-    dailyOver18RateCents: 4500,
+    dailyInfantRateCents: DEFAULT_DAILY_INFANT_RATE_CENTS,
+    dailyOver18RateCents: DEFAULT_DAILY_OVER18_RATE_CENTS,
     employerContributionMethod: "quebec_statutory",
     defaultEmployerContributionPercent: 18,
     qcRrqEmployerPercent: QUEBEC_EMPLOYER_RATES_2026.rrqPercent,
@@ -216,10 +220,16 @@ export default function ComptabilitePage() {
       setPayRates(Array.isArray(data.payRates) ? data.payRates : []);
       const cfg = data.config as AccountingConfig | undefined;
       setInfantRateInput(
-        String(centsToDollars(cfg?.dailyInfantRateCents ?? 5200))
+        String(
+          centsToDollars(cfg?.dailyInfantRateCents ?? DEFAULT_DAILY_INFANT_RATE_CENTS)
+        )
       );
       setOver18RateInput(
-        String(centsToDollars(cfg?.dailyOver18RateCents ?? 4500))
+        String(
+          centsToDollars(
+            cfg?.dailyOver18RateCents ?? DEFAULT_DAILY_OVER18_RATE_CENTS
+          )
+        )
       );
 
       const journal = data.journal as DailyJournal | null;
@@ -1079,7 +1089,11 @@ export default function ComptabilitePage() {
                 <p className="text-sm font-medium text-slate-800">
                   Poupons (6 à 18 mois)
                 </p>
-                <div className="grid gap-3 sm:grid-cols-3 items-end">
+                <div
+                  className={`grid gap-3 items-end ${
+                    canViewSalaryDetails ? "sm:grid-cols-3" : "sm:grid-cols-1 max-w-xs"
+                  }`}
+                >
                   <label className="text-sm block">
                     <span className="text-slate-600">Nombre d&apos;enfants</span>
                     <input
@@ -1090,28 +1104,36 @@ export default function ComptabilitePage() {
                       onChange={(e) => setInfantCount(e.target.value)}
                     />
                   </label>
-                  <label className="text-sm block">
-                    <span className="text-slate-600">Tarif / jour ($)</span>
-                    <input
-                      className="input-field mt-1"
-                      inputMode="decimal"
-                      value={infantRateInput}
-                      onChange={(e) => setInfantRateInput(e.target.value)}
-                    />
-                  </label>
-                  <div>
-                    <p className="text-xs text-slate-500">Sous-total</p>
-                    <p className="text-lg font-bold text-emerald-700">
-                      {formatCad(infantRevenueCents)}
-                    </p>
-                  </div>
+                  {canViewSalaryDetails && (
+                    <>
+                      <label className="text-sm block">
+                        <span className="text-slate-600">Tarif / jour ($)</span>
+                        <input
+                          className="input-field mt-1"
+                          inputMode="decimal"
+                          value={infantRateInput}
+                          onChange={(e) => setInfantRateInput(e.target.value)}
+                        />
+                      </label>
+                      <div>
+                        <p className="text-xs text-slate-500">Sous-total</p>
+                        <p className="text-lg font-bold text-emerald-700">
+                          {formatCad(infantRevenueCents)}
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="rounded-lg bg-white border border-sage-100 p-3 space-y-2">
                 <p className="text-sm font-medium text-slate-800">
                   18 mois et plus
                 </p>
-                <div className="grid gap-3 sm:grid-cols-3 items-end">
+                <div
+                  className={`grid gap-3 items-end ${
+                    canViewSalaryDetails ? "sm:grid-cols-3" : "sm:grid-cols-1 max-w-xs"
+                  }`}
+                >
                   <label className="text-sm block">
                     <span className="text-slate-600">Nombre d&apos;enfants</span>
                     <input
@@ -1122,31 +1144,37 @@ export default function ComptabilitePage() {
                       onChange={(e) => setOver18Count(e.target.value)}
                     />
                   </label>
-                  <label className="text-sm block">
-                    <span className="text-slate-600">Tarif / jour ($)</span>
-                    <input
-                      className="input-field mt-1"
-                      inputMode="decimal"
-                      value={over18RateInput}
-                      onChange={(e) => setOver18RateInput(e.target.value)}
-                    />
-                  </label>
-                  <div>
-                    <p className="text-xs text-slate-500">Sous-total</p>
-                    <p className="text-lg font-bold text-emerald-700">
-                      {formatCad(over18RevenueCents)}
+                  {canViewSalaryDetails && (
+                    <>
+                      <label className="text-sm block">
+                        <span className="text-slate-600">Tarif / jour ($)</span>
+                        <input
+                          className="input-field mt-1"
+                          inputMode="decimal"
+                          value={over18RateInput}
+                          onChange={(e) => setOver18RateInput(e.target.value)}
+                        />
+                      </label>
+                      <div>
+                        <p className="text-xs text-slate-500">Sous-total</p>
+                        <p className="text-lg font-bold text-emerald-700">
+                          {formatCad(over18RevenueCents)}
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              {canViewSalaryDetails && (
+                <div className="flex justify-end border-t border-sage-200 pt-3">
+                  <div className="text-right">
+                    <p className="text-xs text-slate-500">Total inscriptions</p>
+                    <p className="text-xl font-bold text-emerald-800">
+                      {formatCad(enrollmentRevenueCents)}
                     </p>
                   </div>
                 </div>
-              </div>
-              <div className="flex justify-end border-t border-sage-200 pt-3">
-                <div className="text-right">
-                  <p className="text-xs text-slate-500">Total inscriptions</p>
-                  <p className="text-xl font-bold text-emerald-800">
-                    {formatCad(enrollmentRevenueCents)}
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
             <div className="flex flex-wrap gap-2 items-end">
               <label className="text-sm flex-1 min-w-[140px]">

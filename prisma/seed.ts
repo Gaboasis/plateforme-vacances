@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import {
+  DEFAULT_DAILY_INFANT_RATE_CENTS,
+  DEFAULT_DAILY_OVER18_RATE_CENTS,
+} from "../src/lib/default-enrollment-rates";
+import {
   DEFAULT_EMPLOYER_CONTRIBUTION_PERCENT,
   DEFAULT_HOURLY_RATE_CENTS,
 } from "../src/lib/default-hourly-rates";
@@ -256,9 +260,9 @@ async function ensureAccountingSeed() {
     where: { id: "default" },
     create: {
       id: "default",
-      dailyChildRateCents: 4500,
-      dailyInfantRateCents: 5200,
-      dailyOver18RateCents: 4500,
+      dailyChildRateCents: DEFAULT_DAILY_OVER18_RATE_CENTS,
+      dailyInfantRateCents: DEFAULT_DAILY_INFANT_RATE_CENTS,
+      dailyOver18RateCents: DEFAULT_DAILY_OVER18_RATE_CENTS,
       employerContributionMethod: "quebec_statutory",
       defaultEmployerContributionPercent: DEFAULT_EMPLOYER_CONTRIBUTION_PERCENT,
       qcRrqEmployerPercent: 6.3,
@@ -268,7 +272,10 @@ async function ensureAccountingSeed() {
       qcCnesstEmployerPercent: 1.15,
       sickLeaveIndemnityPercent: 0.8,
     },
-    update: {},
+    update: {
+      dailyInfantRateCents: DEFAULT_DAILY_INFANT_RATE_CENTS,
+      dailyOver18RateCents: DEFAULT_DAILY_OVER18_RATE_CENTS,
+    },
   });
 
   for (const [id, hourlyRateCents] of Object.entries(DEFAULT_HOURLY_RATE_CENTS)) {
