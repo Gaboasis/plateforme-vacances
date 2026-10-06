@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import {
   canAccessComptabilite,
+  canAccessComptabilitePeriodAnalysis,
   canViewComptabiliteSalaryDetails,
 } from "@/lib/accounting-staff";
 import { isFullAdmin } from "@/lib/staff-actor";
@@ -185,6 +186,17 @@ export default function ComptabilitePage() {
     () => canViewComptabiliteSalaryDetails(sessionUser),
     [sessionUser]
   );
+
+  const canAccessPeriodAnalysis = useMemo(
+    () => canAccessComptabilitePeriodAnalysis(sessionUser),
+    [sessionUser]
+  );
+
+  useEffect(() => {
+    if (!canAccessPeriodAnalysis && mainView === "period") {
+      setMainView("journal");
+    }
+  }, [canAccessPeriodAnalysis, mainView]);
 
   const journalReadOnly = journalLocked && !editUnlocked;
 
@@ -786,25 +798,24 @@ export default function ComptabilitePage() {
           <CalendarDays className="h-4 w-4" />
           Journal du jour
         </button>
-        <button
-          type="button"
-          onClick={() => setMainView("period")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-            mainView === "period"
-              ? "border-primary-500 text-primary-700"
-              : "border-transparent text-slate-500"
-          }`}
-        >
-          <BarChart3 className="h-4 w-4" />
-          Analyse période
-        </button>
+        {canAccessPeriodAnalysis && (
+          <button
+            type="button"
+            onClick={() => setMainView("period")}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              mainView === "period"
+                ? "border-primary-500 text-primary-700"
+                : "border-transparent text-slate-500"
+            }`}
+          >
+            <BarChart3 className="h-4 w-4" />
+            Analyse période
+          </button>
+        )}
       </div>
 
-      {mainView === "period" && (
-        <PeriodAnalysisPanel
-          actorId={actorId}
-          showSalaryDetails={canViewSalaryDetails}
-        />
+      {canAccessPeriodAnalysis && mainView === "period" && (
+        <PeriodAnalysisPanel actorId={actorId} showSalaryDetails />
       )}
 
       {mainView === "journal" && (

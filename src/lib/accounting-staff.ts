@@ -39,6 +39,13 @@ export function canViewComptabiliteSalaryDetails(
   return e?.role === "admin";
 }
 
+/** Analyse de période et rapport détaillé — admin uniquement. */
+export function canAccessComptabilitePeriodAnalysis(
+  e: Pick<Educator, "role"> | undefined | null
+): boolean {
+  return e?.role === "admin";
+}
+
 /** @deprecated Alias — préférer `canAccessComptabilite`. */
 export function isAccountingStaff(
   e: Pick<Educator, "id" | "role" | "email"> | undefined | null

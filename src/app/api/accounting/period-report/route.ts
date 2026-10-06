@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findAccountingActor } from "@/lib/accounting-staff";
+import {
+  canAccessComptabilitePeriodAnalysis,
+  findAccountingActor,
+} from "@/lib/accounting-staff";
 import { buildPeriodReport } from "@/lib/accounting-period-report";
 import { getEducators } from "@/lib/store";
 
@@ -23,8 +26,15 @@ export async function GET(request: NextRequest) {
     const statutoryHolidayDates = parseHolidayDatesParam(datesParam);
 
     const educators = await getEducators();
-    if (!findAccountingActor(educators, actorId)) {
+    const actor = findAccountingActor(educators, actorId);
+    if (!actor) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+    }
+    if (!canAccessComptabilitePeriodAnalysis(actor)) {
+      return NextResponse.json(
+        { error: "Analyse de période réservée à l'administrateur." },
+        { status: 403 }
+      );
     }
 
     if (!from || !to) {
