@@ -94,6 +94,14 @@ export function matchPdfNameToEducator(
   pdfName: string,
   educators: { id: string; name: string }[]
 ): { id: string; name: string } | null {
+  const normFull = normalizeToken(pdfName).replace(/\s+/g, " ");
+  if (/khir|hemiss|om el khir/.test(normFull)) {
+    const khira =
+      educators.find((e) => e.id === "7") ??
+      educators.find((e) => platformFirstName(e.name) === "khira");
+    if (khira) return khira;
+  }
+
   const tokens = tokensFromPdfName(pdfName);
   if (tokens.length === 0) return null;
 
