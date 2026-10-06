@@ -336,6 +336,21 @@ export async function saveDailyJournal(options: {
   return journalToType(result);
 }
 
+/** Supprime le journal du jour et les dépenses fixes enregistrées pour cette date. */
+export async function deleteDailyJournalForDate(dateStr: string): Promise<boolean> {
+  const journalDate = parseJournalDate(dateStr);
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.fixedExpenseEntry.deleteMany({
+      where: { periodStart: journalDate, periodEnd: journalDate },
+    });
+    const deleted = await tx.dailyJournal.deleteMany({
+      where: { journalDate },
+    });
+    return deleted.count;
+  });
+  return result > 0;
+}
+
 export async function listJournalSummariesForMonth(yearMonth: string): Promise<
   {
     journalDate: string;

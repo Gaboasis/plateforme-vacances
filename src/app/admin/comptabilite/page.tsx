@@ -28,6 +28,7 @@ import {
   Lock,
 } from "lucide-react";
 import { canAccessComptabilite } from "@/lib/accounting-staff";
+import { isFullAdmin } from "@/lib/staff-actor";
 import { canModifyLockedJournalDay } from "@/lib/journal-day-editors";
 import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
 import { FixedExpensesJournalSection } from "@/components/accounting/FixedExpensesJournalSection";
@@ -125,6 +126,7 @@ export default function ComptabilitePage() {
   const [otherExpenseAmount, setOtherExpenseAmount] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingDay, setDeletingDay] = useState(false);
   const [saveMsg, setSaveMsg] = useState<"idle" | "ok" | "err">("idle");
   const [showSettings, setShowSettings] = useState(false);
   const [fixedExpensesDayCents, setFixedExpensesDayCents] = useState(0);
@@ -165,6 +167,8 @@ export default function ComptabilitePage() {
     () => canModifyLockedJournalDay(sessionUser),
     [sessionUser]
   );
+
+  const isAdminUser = useMemo(() => isFullAdmin(sessionUser), [sessionUser]);
 
   const journalReadOnly = journalLocked && !editUnlocked;
 
@@ -573,6 +577,31 @@ export default function ComptabilitePage() {
     }
   };
 
+  const deleteJournalDay = async () => {
+    if (!actorId || !isAdminUser || !journalLocked) return;
+    const ok = window.confirm(
+      `Supprimer définitivement la journée du ${dateLabel} ?\n\nLe journal et les dépenses fixes de cette date seront effacés.`
+    );
+    if (!ok) return;
+    setDeletingDay(true);
+    setSaveMsg("idle");
+    try {
+      const res = await fetch("/api/accounting/journal", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: selectedDate, _actorEducatorId: actorId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Échec");
+      editPasswordRef.current = null;
+      await loadDay(selectedDate, actorId);
+    } catch {
+      setSaveMsg("err");
+    } finally {
+      setDeletingDay(false);
+    }
+  };
+
   const submitPasswordModal = async () => {
     if (passwordModalForSave) {
       const pwd = editPasswordInput.trim();
@@ -914,19 +943,32 @@ export default function ComptabilitePage() {
             <Lock className="h-4 w-4 shrink-0" />
             Cette journée est déjà enregistrée (lecture seule).
           </p>
-          {canModifyLockedDay && (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => {
-                setPasswordModalForSave(false);
-                setPasswordModalOpen(true);
-                setEditPasswordError("");
-              }}
-            >
-              Modifier (mot de passe)
-            </button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {canModifyLockedDay && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setPasswordModalForSave(false);
+                  setPasswordModalOpen(true);
+                  setEditPasswordError("");
+                }}
+              >
+                Modifier (mot de passe)
+              </button>
+            )}
+            {isAdminUser && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
+                disabled={deletingDay}
+                onClick={deleteJournalDay}
+              >
+                <Trash2 className="h-4 w-4" />
+                {deletingDay ? "Suppression…" : "Supprimer la journée"}
+              </button>
+            )}
+          </div>
         </div>
       )}
 

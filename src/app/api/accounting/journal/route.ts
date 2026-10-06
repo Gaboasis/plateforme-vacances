@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findAccountingActor } from "@/lib/accounting-staff";
+import { isFullAdmin } from "@/lib/staff-actor";
 import { getEducators } from "@/lib/store";
 import {
+  deleteDailyJournalForDate,
   ensureAccountingConfig,
   getDailyJournal,
   getEducatorPaySummaries,
@@ -97,6 +99,45 @@ export async function PUT(request: NextRequest) {
     });
 
     return NextResponse.json(journal);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erreur serveur";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = (await request.json()) as {
+      date?: string;
+      _actorEducatorId?: string;
+    };
+    const actorId =
+      typeof body._actorEducatorId === "string"
+        ? body._actorEducatorId.trim()
+        : "";
+    const educators = await getEducators();
+    const actor = findAccountingActor(educators, actorId);
+    if (!actor || !isFullAdmin(actor)) {
+      return NextResponse.json(
+        { error: "Seul l'administrateur peut supprimer une journée." },
+        { status: 403 }
+      );
+    }
+
+    const dateStr = typeof body.date === "string" ? body.date.trim() : "";
+    if (!dateStr) {
+      return NextResponse.json({ error: "Date requise." }, { status: 400 });
+    }
+
+    const removed = await deleteDailyJournalForDate(dateStr);
+    if (!removed) {
+      return NextResponse.json(
+        { error: "Aucune journée enregistrée pour cette date." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, date: dateStr });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur serveur";
     return NextResponse.json({ error: message }, { status: 400 });
