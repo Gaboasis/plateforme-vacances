@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   format,
@@ -24,12 +24,15 @@ import {
   Settings2,
   BarChart3,
   CalendarDays,
+  Lock,
 } from "lucide-react";
+import { canModifyLockedJournalDay } from "@/lib/journal-day-editors";
 import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
 import { FixedExpensesJournalSection } from "@/components/accounting/FixedExpensesJournalSection";
 import type {
   AccountingConfig,
   DailyJournal,
+  Educator,
   EducatorPaySummary,
   JournalLine,
 } from "@/types";
@@ -122,6 +125,14 @@ export default function ComptabilitePage() {
   const [saveMsg, setSaveMsg] = useState<"idle" | "ok" | "err">("idle");
   const [showSettings, setShowSettings] = useState(false);
   const [fixedExpensesDayCents, setFixedExpensesDayCents] = useState(0);
+  const [journalLocked, setJournalLocked] = useState(false);
+  const [editUnlocked, setEditUnlocked] = useState(true);
+  const [sessionUser, setSessionUser] = useState<Educator | null>(null);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordModalForSave, setPasswordModalForSave] = useState(false);
+  const [editPasswordInput, setEditPasswordInput] = useState("");
+  const [editPasswordError, setEditPasswordError] = useState("");
+  const editPasswordRef = useRef<string | null>(null);
   const [monthSummaries, setMonthSummaries] = useState<
     {
       journalDate: string;
@@ -131,25 +142,49 @@ export default function ComptabilitePage() {
     }[]
   >([]);
 
-  const actorId = useMemo(() => {
-    if (typeof window === "undefined") return null;
+  const actorId = useMemo(() => sessionUser?.id ?? null, [sessionUser]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     try {
-      const u = JSON.parse(sessionStorage.getItem("user") || "{}") as {
-        id?: string;
-      };
-      return u.id ?? null;
+      const u = JSON.parse(sessionStorage.getItem("user") || "null") as Educator | null;
+      setSessionUser(u?.id ? u : null);
     } catch {
-      return null;
+      setSessionUser(null);
     }
+  }, []);
+
+  const canModifyLockedDay = useMemo(
+    () => canModifyLockedJournalDay(sessionUser),
+    [sessionUser]
+  );
+
+  const journalReadOnly = journalLocked && !editUnlocked;
+
+  const getEditPassword = useCallback(
+    () => editPasswordRef.current ?? undefined,
+    []
+  );
+
+  const resetEditSession = useCallback(() => {
+    setEditUnlocked(true);
+    setEditPasswordInput("");
+    setEditPasswordError("");
+    editPasswordRef.current = null;
   }, []);
 
   const loadDay = useCallback(async (date: string) => {
     setLoading(true);
     setSaveMsg("idle");
+    resetEditSession();
     try {
       const res = await fetch(`/api/accounting/journal?date=${encodeURIComponent(date)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Chargement impossible");
+
+      const locked = Boolean(data.journalLocked ?? data.journal);
+      setJournalLocked(locked);
+      setEditUnlocked(!locked);
 
       setConfig(normalizeAccountingConfig(data.config));
       setPayRates(Array.isArray(data.payRates) ? data.payRates : []);
@@ -244,7 +279,7 @@ export default function ComptabilitePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resetEditSession]);
 
   useEffect(() => {
     loadDay(selectedDate);
@@ -445,8 +480,52 @@ export default function ComptabilitePage() {
     setLines((prev) => prev.filter((l) => l.clientId !== clientId));
   };
 
-  const saveJournal = async () => {
+  const verifyEditPassword = async (password: string): Promise<boolean> => {
+    if (!actorId) return false;
+    const res = await fetch("/api/accounting/journal/verify-edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: selectedDate,
+        editPassword: password,
+        _actorEducatorId: actorId,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setEditPasswordError(data.error || "Mot de passe refusé.");
+      return false;
+    }
+    return true;
+  };
+
+  const unlockJournalForEdit = async () => {
+    setEditPasswordError("");
+    const pwd = editPasswordInput.trim();
+    if (!pwd) {
+      setEditPasswordError("Entrez votre mot de passe.");
+      return;
+    }
+    const ok = await verifyEditPassword(pwd);
+    if (!ok) return;
+    editPasswordRef.current = pwd;
+    setEditUnlocked(true);
+    setPasswordModalOpen(false);
+    setEditPasswordInput("");
+  };
+
+  const saveJournal = async (passwordOverride?: string) => {
     if (!actorId) return;
+    const pwd =
+      passwordOverride?.trim() ||
+      editPasswordRef.current ||
+      undefined;
+    if (journalLocked && !pwd) {
+      setPasswordModalForSave(true);
+      setPasswordModalOpen(true);
+      setEditPasswordError("");
+      return;
+    }
     setSaving(true);
     setSaveMsg("idle");
     try {
@@ -455,6 +534,7 @@ export default function ComptabilitePage() {
         notes,
         _actorEducatorId: actorId,
         lines: allLinesForSave.map(({ clientId: _, ...rest }) => rest),
+        ...(journalLocked && pwd ? { editPassword: pwd } : {}),
       };
       const res = await fetch("/api/accounting/journal", {
         method: "PUT",
@@ -464,12 +544,39 @@ export default function ComptabilitePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Échec");
       setSaveMsg("ok");
+      editPasswordRef.current = null;
+      setPasswordModalOpen(false);
+      setPasswordModalForSave(false);
+      setEditPasswordInput("");
       await loadDay(selectedDate);
-    } catch {
+    } catch (e) {
       setSaveMsg("err");
+      if (e instanceof Error && journalLocked) {
+        setEditPasswordError(e.message);
+      }
     } finally {
       setSaving(false);
     }
+  };
+
+  const submitPasswordModal = async () => {
+    if (passwordModalForSave) {
+      const pwd = editPasswordInput.trim();
+      if (!pwd) {
+        setEditPasswordError("Entrez votre mot de passe.");
+        return;
+      }
+      const ok = await verifyEditPassword(pwd);
+      if (!ok) return;
+      editPasswordRef.current = pwd;
+      setEditUnlocked(true);
+      setPasswordModalOpen(false);
+      setPasswordModalForSave(false);
+      setEditPasswordInput("");
+      await saveJournal(pwd);
+      return;
+    }
+    await unlockJournalForEdit();
   };
 
   const saveConfig = async () => {
@@ -787,6 +894,38 @@ export default function ComptabilitePage() {
         </div>
       )}
 
+      {journalLocked && !editUnlocked && (
+        <div className="card flex flex-wrap items-center justify-between gap-3 !py-3 !px-4 border-amber-200 bg-amber-50">
+          <p className="text-sm text-amber-900 flex items-center gap-2">
+            <Lock className="h-4 w-4 shrink-0" />
+            Cette journée est déjà enregistrée (lecture seule).
+          </p>
+          {canModifyLockedDay && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setPasswordModalForSave(false);
+                setPasswordModalOpen(true);
+                setEditPasswordError("");
+              }}
+            >
+              Modifier (mot de passe)
+            </button>
+          )}
+        </div>
+      )}
+
+      {editUnlocked && journalLocked && (
+        <p className="text-sm text-emerald-700 px-1">
+          Mode modification — n&apos;oubliez pas d&apos;enregistrer avant de changer de date.
+        </p>
+      )}
+
+      <fieldset
+        disabled={journalReadOnly}
+        className="space-y-6 min-w-0 border-0 p-0 m-0 disabled:opacity-90"
+      >
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4">
           <div className="flex items-center gap-2 text-emerald-800 text-sm font-medium">
@@ -1108,6 +1247,8 @@ export default function ComptabilitePage() {
             actorId={actorId}
             journalDate={selectedDate}
             onTotalCentsChange={onFixedExpensesTotalChange}
+            readOnly={journalReadOnly}
+            getEditPassword={getEditPassword}
           />
 
           <label className="block card !p-4">
@@ -1149,6 +1290,7 @@ export default function ComptabilitePage() {
           )}
         </>
       )}
+      </fieldset>
 
       <div className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 backdrop-blur p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-6xl flex flex-wrap items-center gap-3 justify-between">
@@ -1167,15 +1309,77 @@ export default function ComptabilitePage() {
           <button
             type="button"
             className="btn-primary w-full sm:w-auto"
-            disabled={saving || loading}
-            onClick={saveJournal}
+            disabled={
+              saving ||
+              loading ||
+              journalReadOnly ||
+              (!canModifyLockedDay && journalLocked)
+            }
+            onClick={() => saveJournal()}
           >
             <Save className="h-4 w-4" />
-            {saving ? "Enregistrement…" : "Enregistrer la journée"}
+            {saving
+              ? "Enregistrement…"
+              : journalLocked
+                ? "Enregistrer les modifications"
+                : "Enregistrer la journée"}
           </button>
         </div>
       </div>
         </>
+      )}
+
+      {passwordModalOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 p-4"
+          role="dialog"
+          aria-modal
+        >
+          <div className="card w-full max-w-md space-y-4">
+            <h2 className="font-semibold text-lg text-slate-800">
+              {passwordModalForSave
+                ? "Mot de passe pour enregistrer"
+                : "Modifier la journée enregistrée"}
+            </h2>
+            <p className="text-sm text-slate-600">
+              Entrez <strong>votre</strong> mot de passe de connexion à la plateforme
+              ({sessionUser?.name ?? "compte actuel"}).
+            </p>
+            <label className="text-sm block">
+              <span className="text-slate-600">Mot de passe</span>
+              <input
+                type="password"
+                className="input-field mt-1"
+                autoComplete="current-password"
+                value={editPasswordInput}
+                onChange={(e) => setEditPasswordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitPasswordModal();
+                }}
+              />
+            </label>
+            {editPasswordError && (
+              <p className="text-sm text-rose-600">{editPasswordError}</p>
+            )}
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setPasswordModalOpen(false);
+                  setPasswordModalForSave(false);
+                  setEditPasswordInput("");
+                  setEditPasswordError("");
+                }}
+              >
+                Annuler
+              </button>
+              <button type="button" className="btn-primary" onClick={submitPasswordModal}>
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

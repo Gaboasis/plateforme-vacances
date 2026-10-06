@@ -9,6 +9,7 @@ import {
   saveDailyJournal,
   type JournalLineInput,
 } from "@/lib/store-accounting";
+import { assertCanEditLockedJournalDay } from "@/lib/verify-journal-day-edit";
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +34,13 @@ export async function GET(request: NextRequest) {
       getEducatorPaySummaries(),
     ]);
 
-    return NextResponse.json({ journal, config, payRates, date });
+    return NextResponse.json({
+      journal,
+      config,
+      payRates,
+      date,
+      journalLocked: journal != null,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur serveur";
     return NextResponse.json({ error: message }, { status: 400 });
@@ -47,6 +54,7 @@ export async function PUT(request: NextRequest) {
       notes?: string;
       lines?: JournalLineInput[];
       _actorEducatorId?: string;
+      editPassword?: string;
     };
 
     const actorId =
@@ -62,6 +70,15 @@ export async function PUT(request: NextRequest) {
     const dateStr = typeof body.date === "string" ? body.date.trim() : "";
     if (!dateStr) {
       return NextResponse.json({ error: "Date requise." }, { status: 400 });
+    }
+
+    const auth = await assertCanEditLockedJournalDay({
+      dateStr,
+      actorId: actor.id,
+      editPassword: body.editPassword,
+    });
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const lines = Array.isArray(body.lines) ? body.lines : [];

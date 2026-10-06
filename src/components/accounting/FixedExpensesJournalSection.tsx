@@ -13,12 +13,16 @@ type Props = {
   actorId: string | null;
   journalDate: string;
   onTotalCentsChange?: (totalCents: number) => void;
+  readOnly?: boolean;
+  getEditPassword?: () => string | undefined;
 };
 
 export function FixedExpensesJournalSection({
   actorId,
   journalDate,
   onTotalCentsChange,
+  readOnly = false,
+  getEditPassword,
 }: Props) {
   const [items, setItems] = useState<FixedExpenseEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,6 +90,7 @@ export function FixedExpensesJournalSection({
           sourceName,
           note,
           _actorEducatorId: actorId,
+          editPassword: getEditPassword?.(),
         }),
       });
       const data = await res.json();
@@ -109,7 +114,11 @@ export function FixedExpensesJournalSection({
       const res = await fetch("/api/accounting/fixed-expenses", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, _actorEducatorId: actorId }),
+        body: JSON.stringify({
+          id,
+          _actorEducatorId: actorId,
+          editPassword: getEditPassword?.(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur");
@@ -122,7 +131,7 @@ export function FixedExpensesJournalSection({
   const dayTotal = items.reduce((s, i) => s + i.amountCents, 0);
 
   return (
-    <section className="card space-y-4">
+    <section className="card space-y-4" aria-disabled={readOnly}>
       <div>
         <h2 className="font-semibold text-lg text-slate-800">
           5 — Dépenses fixes
@@ -134,6 +143,7 @@ export function FixedExpensesJournalSection({
         </p>
       </div>
 
+      <fieldset disabled={readOnly} className="space-y-4 min-w-0 border-0 p-0 m-0">
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 items-end">
         <label className="text-sm block sm:col-span-2">
           <span className="text-slate-600">Dépense</span>
@@ -141,6 +151,7 @@ export function FixedExpensesJournalSection({
             className="input-field mt-1"
             value={pick}
             onChange={(e) => setPick(e.target.value)}
+            disabled={readOnly}
           >
             <option value="">— Choisir dans la liste —</option>
             {FIXED_EXPENSE_SUGGESTIONS.map((s) => (
@@ -192,12 +203,13 @@ export function FixedExpensesJournalSection({
       <button
         type="button"
         className="btn-secondary"
-        disabled={adding || !resolvedLabel || !amount.trim()}
-        onClick={addItem}
-      >
-        <Plus className="h-4 w-4" />
-        Ajouter la dépense fixe
-      </button>
+      disabled={readOnly || adding || !resolvedLabel || !amount.trim()}
+      onClick={addItem}
+    >
+      <Plus className="h-4 w-4" />
+      Ajouter la dépense fixe
+    </button>
+      </fieldset>
 
       {error && <p className="text-sm text-rose-600">{error}</p>}
       {loading && items.length === 0 && (

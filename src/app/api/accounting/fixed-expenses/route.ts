@@ -6,6 +6,8 @@ import {
   listFixedExpensesForPeriod,
 } from "@/lib/store-accounting";
 import { getEducators } from "@/lib/store";
+import { assertCanEditLockedJournalDay } from "@/lib/verify-journal-day-edit";
+import { prisma } from "@/lib/db";
 
 async function requireActor(actorId: string | undefined) {
   const educators = await getEducators();
@@ -42,6 +44,7 @@ export async function POST(request: NextRequest) {
       sourceName?: string;
       note?: string;
       _actorEducatorId?: string;
+      editPassword?: string;
     };
     const actorId =
       typeof body._actorEducatorId === "string"
@@ -69,6 +72,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Montant invalide." }, { status: 400 });
     }
 
+    if (periodStart === periodEnd) {
+      const auth = await assertCanEditLockedJournalDay({
+        dateStr: periodStart,
+        actorId,
+        editPassword: body.editPassword,
+      });
+      if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+      }
+    }
+
     const created = await createFixedExpenseEntry({
       periodStart,
       periodEnd,
@@ -86,7 +100,11 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const body = (await request.json()) as { id?: string; _actorEducatorId?: string };
+    const body = (await request.json()) as {
+      id?: string;
+      _actorEducatorId?: string;
+      editPassword?: string;
+    };
     const actorId =
       typeof body._actorEducatorId === "string"
         ? body._actorEducatorId.trim()
@@ -98,6 +116,23 @@ export async function DELETE(request: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: "ID requis." }, { status: 400 });
     }
+    const entry = await prisma.fixedExpenseEntry.findUnique({ where: { id } });
+    if (!entry) {
+      return NextResponse.json({ error: "Introuvable." }, { status: 404 });
+    }
+    const day = entry.periodStart.toISOString().slice(0, 10);
+    const dayEnd = entry.periodEnd.toISOString().slice(0, 10);
+    if (day === dayEnd) {
+      const auth = await assertCanEditLockedJournalDay({
+        dateStr: day,
+        actorId,
+        editPassword: body.editPassword,
+      });
+      if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+      }
+    }
+
     await deleteFixedExpenseEntry(id);
     return NextResponse.json({ ok: true });
   } catch {

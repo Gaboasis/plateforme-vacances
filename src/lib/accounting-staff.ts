@@ -1,12 +1,17 @@
 import type { Educator } from "@/types";
+import { isLoubabaJournalEditor } from "./journal-day-editors";
 import { isFullAdmin, isSecretaryInboxStaff } from "./staff-actor";
 
-/** Journal comptable : admin (test) puis secrétaire (Kamar) en production. */
+/** Journal comptable : admin, secrétaire (Kamar), Loubaba. */
 export function isAccountingStaff(
   e: Pick<Educator, "id" | "role" | "email"> | undefined | null
 ): boolean {
   if (!e) return false;
-  return isFullAdmin(e) || isSecretaryInboxStaff(e);
+  return (
+    isFullAdmin(e) ||
+    isSecretaryInboxStaff(e) ||
+    isLoubabaJournalEditor(e)
+  );
 }
 
 export function findAccountingActor(

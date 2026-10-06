@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { isAccountingStaff } from "@/lib/accounting-staff";
 import Link from "next/link";
 import { LogOut, Home, Shield, Wallet } from "lucide-react";
 import type { Educator } from "@/types";
@@ -14,6 +15,7 @@ export default function AdminLayout({
   const [user, setUser] = useState<Educator | null>(null);
   const [appealCount, setAppealCount] = useState(0);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     const stored = sessionStorage.getItem("user");
@@ -22,17 +24,20 @@ export default function AdminLayout({
       return;
     }
     try {
-      const educator = JSON.parse(stored);
+      const educator = JSON.parse(stored) as Educator;
+      const comptabiliteOnly = pathname?.startsWith("/admin/comptabilite");
       if (educator?.role !== "admin") {
-        router.push("/dashboard");
-        return;
+        if (!(comptabiliteOnly && isAccountingStaff(educator))) {
+          router.push("/dashboard");
+          return;
+        }
       }
       setUser(educator);
     } catch {
       sessionStorage.removeItem("user");
       router.push("/");
     }
-  }, [router]);
+  }, [router, pathname]);
 
   useEffect(() => {
     const fetchCount = () => {
