@@ -182,15 +182,21 @@ export function PeriodAnalysisPanel({
               {report.daysWithJournal} jour(s) saisi(s) dans la période ·{" "}
               {report.statutoryHolidayDates.length} férié(s) saisi(s)
             </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4 space-y-1 text-sm">
-                <p className="font-semibold text-emerald-900">Revenus</p>
-                <p>Inscriptions : {formatCad(report.revenue.enrollmentCents)}</p>
-                <p>Autres revenus : {formatCad(report.revenue.otherCents)}</p>
-                <p className="font-bold text-emerald-800 pt-1">
-                  Total {formatCad(report.revenue.totalCents)}
-                </p>
-              </div>
+            <div
+              className={`grid gap-3 ${
+                showSalaryDetails ? "sm:grid-cols-2" : "sm:grid-cols-1"
+              }`}
+            >
+              {showSalaryDetails && (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4 space-y-1 text-sm">
+                  <p className="font-semibold text-emerald-900">Revenus</p>
+                  <p>Inscriptions : {formatCad(report.revenue.enrollmentCents)}</p>
+                  <p>Autres revenus : {formatCad(report.revenue.otherCents)}</p>
+                  <p className="font-bold text-emerald-800 pt-1">
+                    Total {formatCad(report.revenue.totalCents)}
+                  </p>
+                </div>
+              )}
               <div className="rounded-xl bg-rose-50 border border-rose-100 p-4 space-y-1 text-sm">
                 <p className="font-semibold text-rose-900">Dépenses</p>
                 {showSalaryDetails ? (
@@ -222,16 +228,18 @@ export function PeriodAnalysisPanel({
                 </p>
               </div>
             </div>
-            <div className="rounded-xl bg-slate-100 p-4 text-center">
-              <p className="text-sm text-slate-600">Résultat net</p>
-              <p
-                className={`text-2xl font-bold ${
-                  report.netCents >= 0 ? "text-emerald-700" : "text-rose-700"
-                }`}
-              >
-                {formatCad(report.netCents)}
-              </p>
-            </div>
+            {showSalaryDetails && (
+              <div className="rounded-xl bg-slate-100 p-4 text-center">
+                <p className="text-sm text-slate-600">Résultat net</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    report.netCents >= 0 ? "text-emerald-700" : "text-rose-700"
+                  }`}
+                >
+                  {formatCad(report.netCents)}
+                </p>
+              </div>
+            )}
           </div>
 
           {report.fixedExpenses.length > 0 && (

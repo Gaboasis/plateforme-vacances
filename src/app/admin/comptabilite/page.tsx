@@ -26,6 +26,7 @@ import {
   BarChart3,
   CalendarDays,
   Lock,
+  CheckCircle2,
 } from "lucide-react";
 import {
   canAccessComptabilite,
@@ -1044,16 +1045,22 @@ export default function ComptabilitePage() {
         disabled={journalReadOnly}
         className="space-y-6 min-w-0 border-0 p-0 m-0 disabled:opacity-90"
       >
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4">
-          <div className="flex items-center gap-2 text-emerald-800 text-sm font-medium">
-            <TrendingUp className="h-4 w-4" />
-            Revenus
+      <div
+        className={`grid gap-3 ${
+          canViewSalaryDetails ? "sm:grid-cols-3" : "sm:grid-cols-2"
+        }`}
+      >
+        {canViewSalaryDetails && (
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4">
+            <div className="flex items-center gap-2 text-emerald-800 text-sm font-medium">
+              <TrendingUp className="h-4 w-4" />
+              Revenus
+            </div>
+            <p className="mt-1 text-2xl font-bold text-emerald-900">
+              {formatCad(totals.revenue)}
+            </p>
           </div>
-          <p className="mt-1 text-2xl font-bold text-emerald-900">
-            {formatCad(totals.revenue)}
-          </p>
-        </div>
+        )}
         <div className="rounded-2xl border border-rose-100 bg-rose-50/80 p-4">
           <div className="flex items-center gap-2 text-rose-800 text-sm font-medium">
             <TrendingDown className="h-4 w-4" />
@@ -1063,16 +1070,18 @@ export default function ComptabilitePage() {
             {formatCad(totals.expense)}
           </p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="text-slate-600 text-sm font-medium">Solde du jour</div>
-          <p
-            className={`mt-1 text-2xl font-bold ${
-              totals.balance >= 0 ? "text-slate-900" : "text-rose-700"
-            }`}
-          >
-            {formatCad(totals.balance)}
-          </p>
-        </div>
+        {canViewSalaryDetails && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="text-slate-600 text-sm font-medium">Solde du jour</div>
+            <p
+              className={`mt-1 text-2xl font-bold ${
+                totals.balance >= 0 ? "text-slate-900" : "text-rose-700"
+              }`}
+            >
+              {formatCad(totals.balance)}
+            </p>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -1207,13 +1216,24 @@ export default function ComptabilitePage() {
                   key={l.clientId}
                   className="flex justify-between items-center text-sm bg-emerald-50/50 rounded-lg px-3 py-2"
                 >
-                  <span>
-                    {l.label} — <strong>{formatCad(l.amountCents)}</strong>
-                  </span>
+                  {canViewSalaryDetails ? (
+                    <span>
+                      {l.label} — <strong>{formatCad(l.amountCents)}</strong>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2 text-emerald-800">
+                      <CheckCircle2
+                        className="h-5 w-5 text-emerald-600 shrink-0"
+                        aria-hidden
+                      />
+                      <span>Revenu enregistré</span>
+                    </span>
+                  )}
                   <button
                     type="button"
                     className="text-rose-600 p-2"
                     onClick={() => removeManualLine(l.clientId)}
+                    aria-label="Retirer ce revenu"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -1434,9 +1454,11 @@ export default function ComptabilitePage() {
                       onClick={() => setSelectedDate(s.journalDate)}
                     >
                       <span>{format(parseISO(s.journalDate), "d MMM", { locale: fr })}</span>
-                      <span className="text-slate-600">
-                        {formatCad(s.balanceCents)}
-                      </span>
+                      {canViewSalaryDetails && (
+                        <span className="text-slate-600">
+                          {formatCad(s.balanceCents)}
+                        </span>
+                      )}
                     </button>
                   </li>
                 ))}
@@ -1450,10 +1472,20 @@ export default function ComptabilitePage() {
       <div className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 backdrop-blur p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-6xl flex flex-wrap items-center gap-3 justify-between">
           <p className="text-sm text-slate-600">
-            Solde :{" "}
-            <strong className={totals.balance >= 0 ? "text-emerald-700" : "text-rose-700"}>
-              {formatCad(totals.balance)}
-            </strong>
+            {canViewSalaryDetails ? (
+              <>
+                Solde :{" "}
+                <strong
+                  className={
+                    totals.balance >= 0 ? "text-emerald-700" : "text-rose-700"
+                  }
+                >
+                  {formatCad(totals.balance)}
+                </strong>
+              </>
+            ) : (
+              <span className="text-slate-500">Journal du jour</span>
+            )}
             {saveMsg === "ok" && (
               <span className="ml-2 text-emerald-600">Enregistré ✓</span>
             )}
