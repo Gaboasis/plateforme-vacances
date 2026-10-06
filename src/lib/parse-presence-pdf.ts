@@ -24,6 +24,13 @@ export type PresenceParseResult = {
 const ROW_RE =
   /^(.+?)\s+(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})\s+(\S+)\s*$/;
 
+/** Une ligne compacte se termine par date + deux heures (avant le « GAB » du site). */
+const ROW_COMPACT_TAIL_RE =
+  /([A-Za-zÀ-ÿ-]*[a-zà-ÿ])(\d{4}-\d{2}-\d{2})(\d{2}:\d{2})(\d{2}:\d{2})$/;
+
+const SKIP_NAME_RE =
+  /imprime|educatrice|historique|garderie|^page\d|date debut|installation/i;
+
 /** Prénoms / variantes du PDF → prénom plateforme (minuscule). */
 const PDF_NAME_ALIASES: Record<string, string> = {
   amneh: "amineh",
@@ -54,7 +61,29 @@ export function hoursBetweenTimes(start: string, end: string): number {
   return Math.round((diff / 60) * 4) / 4;
 }
 
-export function parsePresencePdfText(text: string): PresencePdfRow[] {
+function pushPresenceRow(
+  rows: PresencePdfRow[],
+  pdfName: string,
+  journalDate: string,
+  startTime: string,
+  endTime: string,
+  site: string
+) {
+  const name = pdfName.trim();
+  if (!name || SKIP_NAME_RE.test(normalizeToken(name))) return;
+  const start = startTime.padStart(5, "0");
+  const end = endTime.padStart(5, "0");
+  rows.push({
+    pdfName: name,
+    journalDate,
+    startTime: start,
+    endTime: end,
+    site,
+    hours: hoursBetweenTimes(start, end),
+  });
+}
+
+function parsePresenceSpacedLines(text: string): PresencePdfRow[] {
   const rows: PresencePdfRow[] = [];
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -66,26 +95,59 @@ export function parsePresencePdfText(text: string): PresencePdfRow[] {
 
     const m = ROW_RE.exec(trimmed);
     if (!m) continue;
-
-    const startTime = m[3].padStart(5, "0");
-    const endTime = m[4].padStart(5, "0");
-    rows.push({
-      pdfName: m[1].trim(),
-      journalDate: m[2],
-      startTime,
-      endTime,
-      site: m[5],
-      hours: hoursBetweenTimes(startTime, endTime),
-    });
+    pushPresenceRow(rows, m[1], m[2], m[3], m[4], m[5]);
   }
   return rows;
+}
+
+function presenceBodyWithoutHeader(flat: string): string {
+  const afterPage = flat.match(/Page\d+(.*)/i);
+  if (afterPage?.[1]) return afterPage[1];
+  const afterHeader = flat.match(
+    /(?:DébutFinInstallation|FinInstallation)(.*)/i
+  );
+  return afterHeader?.[1] ?? flat;
+}
+
+function parsePresenceCompactBlob(text: string): PresencePdfRow[] {
+  const flat = text.replace(/\s+/g, "");
+  const body = presenceBodyWithoutHeader(flat);
+  const rows: PresencePdfRow[] = [];
+  for (const chunk of body.split("GAB")) {
+    const trimmed = chunk.trim();
+    if (!trimmed) continue;
+    const m = ROW_COMPACT_TAIL_RE.exec(trimmed);
+    if (!m) continue;
+    pushPresenceRow(rows, m[1], m[2], m[3], m[4], "GAB");
+  }
+  return rows;
+}
+
+export function parsePresencePdfText(text: string): PresencePdfRow[] {
+  const spaced = parsePresenceSpacedLines(text);
+  if (spaced.length > 0) return spaced;
+  return parsePresenceCompactBlob(text);
 }
 
 function platformFirstName(platformName: string): string {
   return normalizeToken(platformName);
 }
 
+/** « ElBhetouriKarima » ou « Cheikh-El-Najjarine Hanady » → jetons pour le prénom. */
+function splitPdfNameParts(pdfName: string): string[] {
+  const withSpaces = pdfName
+    .replace(/-/g, " ")
+    .replace(/([a-zà-ÿ])([A-ZÀ-Ÿ])/g, "$1 $2")
+    .replace(/([A-ZÀ-Ÿ]{2,})([A-ZÀ-Ÿ][a-zà-ÿ])/g, "$1 $2");
+  return withSpaces
+    .split(/\s+/)
+    .map(normalizeToken)
+    .filter(Boolean);
+}
+
 function tokensFromPdfName(pdfName: string): string[] {
+  const parts = splitPdfNameParts(pdfName);
+  if (parts.length > 0) return parts;
   return pdfName
     .split(/\s+/)
     .map(normalizeToken)
