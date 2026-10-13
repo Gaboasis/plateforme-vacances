@@ -1260,12 +1260,16 @@ export default function ComptabilitePage() {
             <p className="text-sm text-slate-600">
               {canViewSalaryDetails ? (
                 <>
-                  Entrez les heures travaillées : le <strong>salaire brut</strong> du jour
-                  sert de base aux cotisations employeur (RRQ, AE, RQAP, FSS, CNESST), à
-                  l&apos;indemnité vacances (4 % ou 6 %) et à la provision maladie (0,8 %).
+                  Entrez les heures payables (import PDF : punch in/out −{" "}
+                  <strong>1 h</strong> pause). Le salaire brut du jour sert de base aux
+                  cotisations employeur (RRQ, AE, RQAP, FSS, CNESST), à l&apos;indemnité
+                  vacances (4 % ou 6 %) et à la provision maladie (0,8 %).
                 </>
               ) : (
-                <>Entrez les heures travaillées pour chaque membre du personnel.</>
+                <>
+                  Entrez les <strong>heures payables</strong> (PDF GAB : pause de 1 h
+                  déjà déduite).
+                </>
               )}
             </p>
             <PresencePdfImportPanel

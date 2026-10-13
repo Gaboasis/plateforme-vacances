@@ -1,5 +1,7 @@
 /** Parse « Historique des présences » (GAB / Boutchoux). */
 
+import { payableHoursFromClockTimes } from "./payroll-work-hours";
+
 export type PresencePdfRow = {
   pdfName: string;
   journalDate: string;
@@ -48,17 +50,9 @@ function normalizeToken(s: string): string {
     .trim();
 }
 
-function timeToMinutes(t: string): number {
-  const [h, m] = t.split(":").map((x) => parseInt(x, 10));
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
-  return h * 60 + m;
-}
-
-/** Heures entre début et fin, arrondi au quart d'heure le plus proche. */
+/** Heures payables (punch in/out − 1 h pause non payée). */
 export function hoursBetweenTimes(start: string, end: string): number {
-  let diff = timeToMinutes(end) - timeToMinutes(start);
-  if (diff <= 0) diff += 24 * 60;
-  return Math.round((diff / 60) * 4) / 4;
+  return payableHoursFromClockTimes(start, end);
 }
 
 function pushPresenceRow(
@@ -79,7 +73,7 @@ function pushPresenceRow(
     startTime: start,
     endTime: end,
     site,
-    hours: hoursBetweenTimes(start, end),
+    hours: payableHoursFromClockTimes(start, end),
   });
 }
 

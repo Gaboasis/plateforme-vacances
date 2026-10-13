@@ -2,6 +2,11 @@ import {
   DEFAULT_DAILY_INFANT_RATE_CENTS,
   DEFAULT_DAILY_OVER18_RATE_CENTS,
 } from "./default-enrollment-rates";
+import {
+  buildEducatorPayrollJournalLines,
+  isPayrollJournalCategory,
+} from "./journal-educator-payroll-lines";
+import { payableHoursFromGrossClock } from "./payroll-work-hours";
 import { prisma } from "./db";
 import type {
   AccountingConfig,
@@ -388,4 +393,123 @@ export async function listJournalSummariesForMonth(yearMonth: string): Promise<
       balanceCents: totalRevenueCents - totalExpenseCents,
     };
   });
+}
+
+/**
+ * Une seule fois : heures journal = punch−1 h pause ; recalcule salaires/cotisations des journées existantes.
+ */
+export async function migrateExistingJournalsForUnpaidLunchBreak(): Promise<number> {
+  const cfgRow = await prisma.accountingConfig.findUnique({
+    where: { id: "default" },
+  });
+  if (!cfgRow || cfgRow.lunchBreakHoursMigratedAt) {
+    return 0;
+  }
+
+  const config = configFromRow(cfgRow);
+  const paySummaries = await getEducatorPaySummaries();
+  const payById = new Map(paySummaries.map((e) => [e.id, e]));
+
+  const journals = await prisma.dailyJournal.findMany({
+    include: { lines: { orderBy: { sortOrder: "asc" } } },
+  });
+
+  let updated = 0;
+
+  await prisma.$transaction(async (tx) => {
+    for (const journal of journals) {
+      const grossLines = journal.lines.filter(
+        (l) =>
+          l.category === "expense_educator_gross" &&
+          l.educatorId &&
+          l.hoursWorked != null &&
+          l.hoursWorked > 0
+      );
+      if (grossLines.length === 0) continue;
+
+      const educatorIds = new Set(grossLines.map((g) => g.educatorId!));
+      const kept = journal.lines.filter(
+        (l) =>
+          !l.educatorId ||
+          !educatorIds.has(l.educatorId) ||
+          !isPayrollJournalCategory(l.category)
+      );
+
+      const payrollDrafts: ReturnType<typeof buildEducatorPayrollJournalLines> =
+        [];
+
+      for (const gross of grossLines) {
+        const eduId = gross.educatorId!;
+        const edu = payById.get(eduId);
+        if (!edu) continue;
+
+        const oldHours = gross.hoursWorked!;
+        const newHours = payableHoursFromGrossClock(oldHours);
+        const rate = gross.hourlyRateCents ?? edu.hourlyRateCents ?? 0;
+        payrollDrafts.push(
+          ...buildEducatorPayrollJournalLines(
+            {
+              id: edu.id,
+              name: edu.name,
+              hourlyRateCents: rate,
+              vacationIndemnityPercent: edu.vacationIndemnityPercent,
+              employerContributionPercent: edu.employerContributionPercent,
+            },
+            newHours,
+            config
+          )
+        );
+      }
+
+      if (payrollDrafts.length === 0) continue;
+
+      await tx.journalLine.deleteMany({ where: { journalId: journal.id } });
+
+      const sortBase = kept.length;
+      const toCreate = [
+        ...kept.map((l, index) => ({
+          journalId: journal.id,
+          kind: l.kind,
+          category: l.category,
+          label: l.label,
+          amountCents: l.amountCents,
+          educatorId: l.educatorId,
+          educatorName: l.educatorName,
+          hoursWorked: l.hoursWorked,
+          hourlyRateCents: l.hourlyRateCents,
+          employerContributionPercent: l.employerContributionPercent,
+          childCount: l.childCount,
+          dailyRateCents: l.dailyRateCents,
+          sortOrder: l.sortOrder ?? index,
+        })),
+        ...payrollDrafts.map((l, i) => ({
+          journalId: journal.id,
+          kind: l.kind,
+          category: l.category,
+          label: l.label,
+          amountCents: l.amountCents,
+          educatorId: l.educatorId,
+          educatorName: l.educatorName,
+          hoursWorked: l.hoursWorked,
+          hourlyRateCents: l.hourlyRateCents,
+          employerContributionPercent: l.employerContributionPercent ?? null,
+          childCount: null,
+          dailyRateCents: null,
+          sortOrder: sortBase + i,
+        })),
+      ];
+
+      if (toCreate.length > 0) {
+        await tx.journalLine.createMany({ data: toCreate });
+      }
+      updated += 1;
+    }
+
+    await tx.accountingConfig.update({
+      where: { id: "default" },
+      data: { lunchBreakHoursMigratedAt: new Date() },
+    });
+  });
+
+  return updated;
 }

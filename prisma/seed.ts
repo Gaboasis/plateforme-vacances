@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { migrateExistingJournalsForUnpaidLunchBreak } from "../src/lib/store-accounting";
 import {
   DEFAULT_DAILY_INFANT_RATE_CENTS,
   DEFAULT_DAILY_OVER18_RATE_CENTS,
@@ -251,6 +252,13 @@ async function main() {
   await archiveDepartedEducators(["6"]);
 
   await ensureAccountingSeed();
+
+  const lunchMigrated = await migrateExistingJournalsForUnpaidLunchBreak();
+  if (lunchMigrated > 0) {
+    console.log(
+      `Pause non payée (−1 h) : ${lunchMigrated} journée(s) compta recalculée(s)`
+    );
+  }
 
   console.log("Seed terminé ✓");
 }

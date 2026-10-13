@@ -77,7 +77,8 @@ export function PresencePdfImportPanel({
         </p>
         <p className="text-xs text-slate-600 mt-1">
           Déposez le PDF exporté de GAB (comme celui reçu par courriel). Les heures
-          sont calculées du début à la fin, arrondies au quart d&apos;heure.
+          payables = punch in à punch out, moins <strong>1 h</strong> de pause non
+          payée, arrondies au quart d&apos;heure.
         </p>
       </div>
 

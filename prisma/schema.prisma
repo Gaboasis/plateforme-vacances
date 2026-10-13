@@ -35,6 +35,7 @@ model AccountingConfig {
   qcFssEmployerPercent              Float    @default(1.65)
   qcCnesstEmployerPercent         Float    @default(1.15)
   sickLeaveIndemnityPercent       Float    @default(0.8) // provision maladie sur brut
+  lunchBreakHoursMigratedAt       DateTime? // correction unique : −1 h pause sur heures déjà enregistrées
   updatedAt                       DateTime @updatedAt
 }
 
