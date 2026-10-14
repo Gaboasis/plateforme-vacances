@@ -90,6 +90,9 @@ model VacationRequest {
   educatorName        String
   startDate           DateTime
   endDate             DateTime
+  // Dates demandées initialement si l'employé a choisi une option suggérée
+  initialRequestStartDate DateTime?
+  initialRequestEndDate   DateTime?
   reason              String?
   status              String    // "pending" | "accepted" | "rejected" | "cancelled"
   rejectionReason     String?

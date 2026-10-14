@@ -54,6 +54,8 @@ function requestToType(req: {
   cancellationPendingAt: Date | null;
   adminCancellationReason: string | null;
   adminAppealMessage: string | null;
+  initialRequestStartDate: Date | null;
+  initialRequestEndDate: Date | null;
 }): VacationRequest {
   return {
     id: req.id,
@@ -61,6 +63,10 @@ function requestToType(req: {
     educatorName: req.educatorName,
     startDate: req.startDate.toISOString().slice(0, 10),
     endDate: req.endDate.toISOString().slice(0, 10),
+    initialRequestStartDate:
+      req.initialRequestStartDate?.toISOString().slice(0, 10),
+    initialRequestEndDate:
+      req.initialRequestEndDate?.toISOString().slice(0, 10),
     reason: req.reason ?? undefined,
     status: req.status as VacationRequest["status"],
     rejectionReason: req.rejectionReason ?? undefined,
@@ -210,6 +216,8 @@ export type AddVacationRequestOptions = {
   legacyImport?: boolean;
   createdAt?: Date;
   reviewedAt?: Date | null;
+  initialRequestStartDate?: string;
+  initialRequestEndDate?: string;
 };
 
 export async function addVacationRequest(
@@ -227,12 +235,23 @@ export async function addVacationRequest(
         ? options.reviewedAt
         : now;
 
+  const initialStart = options?.initialRequestStartDate?.trim();
+  const initialEnd = options?.initialRequestEndDate?.trim();
+  const hasInitial =
+    initialStart &&
+    initialEnd &&
+    /^\d{4}-\d{2}-\d{2}$/.test(initialStart) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(initialEnd) &&
+    (initialStart !== request.startDate || initialEnd !== request.endDate);
+
   const req = await prisma.vacationRequest.create({
     data: {
       educatorId: request.educatorId,
       educatorName: request.educatorName,
       startDate: new Date(request.startDate),
       endDate: new Date(request.endDate),
+      initialRequestStartDate: hasInitial ? new Date(initialStart) : null,
+      initialRequestEndDate: hasInitial ? new Date(initialEnd) : null,
       reason: request.reason,
       status,
       legacyImport,

@@ -102,6 +102,9 @@ export interface VacationRequest {
   educatorName: string;
   startDate: string;
   endDate: string;
+  /** Demande initiale (refusée) lorsque l'employé a choisi une période suggérée */
+  initialRequestStartDate?: string;
+  initialRequestEndDate?: string;
   reason?: string;
   status: RequestStatus;
   /** true = congé approuvé avant la plateforme (affichage seulement ; compté comme les autres pour les règles) */

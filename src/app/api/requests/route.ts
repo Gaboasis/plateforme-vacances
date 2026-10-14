@@ -30,7 +30,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { educatorId, educatorName, startDate, endDate, reason } = body;
+    const {
+      educatorId,
+      educatorName,
+      startDate,
+      endDate,
+      reason,
+      initialStartDate: initialStartDateRaw,
+      initialEndDate: initialEndDateRaw,
+    } = body;
 
     if (!educatorId || !educatorName || !startDate || !endDate) {
       return NextResponse.json(
@@ -89,9 +97,48 @@ export async function POST(request: NextRequest) {
     }
 
     const status = validation.requiresManualReview ? "pending" : "accepted";
+
+    const initialStartDate =
+      typeof initialStartDateRaw === "string"
+        ? initialStartDateRaw.trim()
+        : "";
+    const initialEndDate =
+      typeof initialEndDateRaw === "string" ? initialEndDateRaw.trim() : "";
+    let initialForStore: {
+      initialRequestStartDate?: string;
+      initialRequestEndDate?: string;
+    } = {};
+
+    if (
+      /^\d{4}-\d{2}-\d{2}$/.test(initialStartDate) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(initialEndDate) &&
+      (initialStartDate !== startDate || initialEndDate !== endDate)
+    ) {
+      const initialValidation = validateVacationRequest(
+        {
+          educatorId,
+          educatorName,
+          startDate: initialStartDate,
+          endDate: initialEndDate,
+          reason,
+        },
+        { rules, vacationRequests, educators }
+      );
+      const matchesSuggestion = initialValidation.suggestedPeriods?.some(
+        (p) => p.startDate === startDate && p.endDate === endDate
+      );
+      if (!initialValidation.valid && matchesSuggestion) {
+        initialForStore = {
+          initialRequestStartDate: initialStartDate,
+          initialRequestEndDate: initialEndDate,
+        };
+      }
+    }
+
     const newRequest = await addVacationRequest(
       { educatorId, educatorName, startDate, endDate, reason },
-      status
+      status,
+      initialForStore
     );
 
     await createAuditLog({

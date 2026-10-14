@@ -21,6 +21,7 @@ import type {
 } from "@/types";
 import { ISO_WEEKDAY_OPTIONS, isoWeekdayLabel } from "@/lib/weekday-fr";
 import { RequestMetaDates } from "@/components/RequestMetaDates";
+import { VacationInitialRequestLabel } from "@/components/VacationInitialRequestLabel";
 import {
   canEmployeeSelfCancelAcceptedNow,
   getEmployeeSelfCancelLastMoment,
@@ -34,10 +35,14 @@ import {
 function UrgentAppealForm({
   requestId,
   educatorId,
+  originalStartDate,
+  originalEndDate,
   onSuccess,
 }: {
   requestId: string;
   educatorId: string;
+  originalStartDate?: string;
+  originalEndDate?: string;
   onSuccess: (updated: VacationRequest) => void;
 }) {
   const [reason, setReason] = useState("");
@@ -72,8 +77,28 @@ function UrgentAppealForm({
   return (
     <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-3 sm:p-4">
       <p className="mb-3 text-sm font-medium text-amber-900">
-        S&apos;il y a une urgence motivée, décrivez la raison. L&apos;administration
-        l&apos;évaluera directement sur la plateforme.
+        {originalStartDate && originalEndDate ? (
+          <>
+            Vous souhaitez quand même les dates initiales (
+            {format(parseISO(originalStartDate), "d MMM yyyy", { locale: fr })}
+            {originalEndDate !== originalStartDate && (
+              <>
+                {" "}
+                —{" "}
+                {format(parseISO(originalEndDate), "d MMM yyyy", {
+                  locale: fr,
+                })}
+              </>
+            )}
+            ) ? Décrivez la situation : l&apos;administration acceptera ou
+            refusera votre demande initiale.
+          </>
+        ) : (
+          <>
+            S&apos;il y a une urgence motivée, décrivez la raison.
+            L&apos;administration l&apos;évaluera directement sur la plateforme.
+          </>
+        )}
       </p>
       <form onSubmit={handleSubmit} className="space-y-3">
         <textarea
@@ -329,6 +354,8 @@ export default function DashboardPage() {
     startDate: string;
     endDate: string;
     reason?: string;
+    initialStartDate?: string;
+    initialEndDate?: string;
   }) => {
     if (!user || user.role === "admin") return;
     setSubmitStatus("idle");
@@ -344,6 +371,8 @@ export default function DashboardPage() {
           startDate: payload.startDate,
           endDate: payload.endDate,
           reason: payload.reason || undefined,
+          initialStartDate: payload.initialStartDate,
+          initialEndDate: payload.initialEndDate,
         }),
       });
 
@@ -1243,8 +1272,9 @@ export default function DashboardPage() {
             Périodes disponibles dans votre demande
           </p>
           <p className="text-slate-600 mb-3">
-            Seuls certains jours sont complets. Vous pouvez soumettre une
-            demande plus courte :
+            Certains jours de votre demande sont complets. Choisissez une période
+            proposée ci-dessous — elle sera enregistrée tout de suite si les
+            règles le permettent.
           </p>
           <ul className="flex flex-col gap-2">
             {lastRejectedContext.suggestedPeriods.map((p) => (
@@ -1263,6 +1293,8 @@ export default function DashboardPage() {
                       startDate: p.startDate,
                       endDate: p.endDate,
                       reason: lastRejectedContext.reason ?? form.reason,
+                      initialStartDate: lastRejectedContext.startDate,
+                      initialEndDate: lastRejectedContext.endDate,
                     });
                   }}
                 >
@@ -1289,12 +1321,23 @@ export default function DashboardPage() {
       {(submitStatus === "rejected" || submitStatus === "error") &&
         lastRejectedContext?.requestId && (
         <div className="space-y-4">
-          <div className="rounded-xl bg-rose-50 p-4 text-rose-800 text-sm">
-            Votre demande n&apos;a pas pu être acceptée : {errorMessage}
-          </div>
+          {(!lastRejectedContext.suggestedPeriods ||
+            lastRejectedContext.suggestedPeriods.length === 0) && (
+            <div className="rounded-xl bg-rose-50 p-4 text-rose-800 text-sm">
+              Votre demande n&apos;a pas pu être acceptée : {errorMessage}
+            </div>
+          )}
+          {lastRejectedContext.suggestedPeriods &&
+            lastRejectedContext.suggestedPeriods.length > 0 && (
+            <div className="rounded-xl bg-rose-50/80 p-3 text-rose-900 text-sm">
+              {errorMessage}
+            </div>
+          )}
           <UrgentAppealForm
             requestId={lastRejectedContext.requestId}
             educatorId={user.id}
+            originalStartDate={lastRejectedContext.startDate}
+            originalEndDate={lastRejectedContext.endDate}
             onSuccess={(updated) => {
               setRequests((prev) =>
                 prev.map((r) => (r.id === updated.id ? updated : r))
@@ -1364,6 +1407,10 @@ export default function DashboardPage() {
                       —{" "}
                       {format(parseISO(req.endDate), "d MMM yyyy", { locale: fr })}
                     </p>
+                    <VacationInitialRequestLabel
+                      req={req}
+                      variant="employee"
+                    />
                     {req.reason && (
                       <p className="mt-1 text-sm text-slate-500">{req.reason}</p>
                     )}
@@ -1420,6 +1467,8 @@ export default function DashboardPage() {
                           <UrgentAppealForm
                             requestId={req.id}
                             educatorId={user.id}
+                            originalStartDate={req.startDate}
+                            originalEndDate={req.endDate}
                             onSuccess={(updated) => {
                               setRequests((prev) =>
                                 prev.map((r) => (r.id === updated.id ? updated : r))

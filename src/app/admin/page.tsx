@@ -34,6 +34,7 @@ import { isoWeekdayLabel } from "@/lib/weekday-fr";
 import { getAllBiWeekRanges } from "@/lib/biweek";
 import { isDemoEducatorId } from "@/lib/demo-educator";
 import { RequestMetaDates } from "@/components/RequestMetaDates";
+import { VacationInitialRequestLabel } from "@/components/VacationInitialRequestLabel";
 
 const defaultRules: Partial<VacationRules> = {
   minQualifiedPresent: 1,
@@ -997,6 +998,7 @@ export default function AdminPage() {
                               {safeFormatDate(req.startDate)} —{" "}
                               {safeFormatDate(req.endDate)}
                             </p>
+                            <VacationInitialRequestLabel req={req} />
                             {req.reason && (
                               <p className="mt-1 text-sm text-slate-500">{req.reason}</p>
                             )}
