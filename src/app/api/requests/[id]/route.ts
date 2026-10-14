@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getEducators,
   getVacationRequestById,
+  getVacationRequests,
+  getVacationRules,
   updateVacationRequest,
   deleteVacationRequest,
   AUDIT_ACTIONS,
   createAuditLog,
 } from "@/lib/store";
+import { validateVacationRequest } from "@/lib/rules-engine";
 import { getClientIp, getUserAgent } from "@/lib/audit-context";
 import { findStaffInboxActor, isFullAdmin } from "@/lib/staff-actor";
 import { notifyStaffByEmail } from "@/lib/staff-notify-email";
@@ -109,8 +112,44 @@ export async function PATCH(
       }
     }
 
+    const nextStatus = status ?? existing.status;
+
+    if (nextStatus === "accepted" && existing.status !== "accepted") {
+      const [rules, vacationRequests, allEducators] = await Promise.all([
+        getVacationRules(),
+        getVacationRequests(),
+        getEducators(),
+      ]);
+      const validation = validateVacationRequest(
+        {
+          educatorId: existing.educatorId,
+          educatorName: existing.educatorName,
+          startDate: existing.startDate,
+          endDate: existing.endDate,
+          reason: existing.reason,
+        },
+        {
+          rules,
+          vacationRequests: vacationRequests.filter((r) => r.id !== id),
+          educators: allEducators,
+        }
+      );
+      if (!validation.valid) {
+        return NextResponse.json(
+          {
+            error: isAppealDecision
+              ? `Impossible d'accepter cette urgence : ${validation.reason}`
+              : validation.reason,
+            conflictingDates: validation.conflictingDates,
+            suggestedPeriods: validation.suggestedPeriods,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const updates: Parameters<typeof updateVacationRequest>[1] = {
-      status: status ?? existing.status,
+      status: nextStatus,
       rejectionReason: rejectionReason ?? existing.rejectionReason,
     };
 

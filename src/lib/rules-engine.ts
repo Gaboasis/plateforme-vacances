@@ -11,6 +11,7 @@ import {
   analyzeVacationPeriodByDay,
   formatConflictDatesList,
 } from "./vacation-day-capacity";
+import { parseVacationDate } from "./vacation-dates";
 
 export interface ValidationContext {
   rules: VacationRules;
@@ -103,8 +104,8 @@ export function validateVacationRequest(
   context: ValidationContext
 ): ValidationResult {
   const { rules, vacationRequests, educators } = context;
-  const start = parseISO(request.startDate);
-  const end = parseISO(request.endDate);
+  const start = parseVacationDate(request.startDate);
+  const end = parseVacationDate(request.endDate);
   const today = new Date();
 
   // Vérifier l'ordre des dates

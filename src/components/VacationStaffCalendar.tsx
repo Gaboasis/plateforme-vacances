@@ -12,12 +12,16 @@ import {
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { parseVacationDate } from "@/lib/vacation-dates";
 
 type DayEntry = { educatorId: string; educatorName: string };
 
 export function VacationStaffCalendar({ actorId }: { actorId: string }) {
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [days, setDays] = useState<Record<string, DayEntry[]>>({});
+  const [overCapacityDays, setOverCapacityDays] = useState<
+    { date: string; educatorNames: string[]; count: number; limit: number }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -37,6 +41,7 @@ export function VacationStaffCalendar({ actorId }: { actorId: string }) {
         return;
       }
       setDays(data.days ?? {});
+      setOverCapacityDays(data.overCapacityDays ?? []);
     } catch {
       setError("Erreur de connexion");
       setDays({});
@@ -96,6 +101,30 @@ export function VacationStaffCalendar({ actorId }: { actorId: string }) {
         <p className="mb-4 text-sm text-rose-600">{error}</p>
       )}
 
+      {overCapacityDays.length > 0 && (
+        <div className="mb-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-950">
+          <p className="font-medium">
+            Attention : certains jours dépassent la limite de congés simultanés
+          </p>
+          <ul className="mt-2 list-disc pl-5 space-y-1">
+            {overCapacityDays.map((o) => (
+              <li key={o.date}>
+                {format(parseVacationDate(o.date), "d MMM yyyy", {
+                  locale: fr,
+                })}{" "}
+                : {o.count} personnes ({o.educatorNames.join(", ")}) — maximum{" "}
+                {o.limit}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-rose-800">
+            Cela arrive si des congés ont été acceptés dans un ordre qui ne
+            respectait pas encore toutes les vérifications. Corrigez en annulant
+            ou en ajustant une demande.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-7 gap-px rounded-xl border border-slate-200 bg-slate-200 overflow-hidden text-xs sm:text-sm">
         {weekdayLabels.map((w) => (
           <div
@@ -112,12 +141,13 @@ export function VacationStaffCalendar({ actorId }: { actorId: string }) {
           const key = format(day, "yyyy-MM-dd");
           const entries = days[key] ?? [];
           const inMonth = isSameMonth(day, month);
+          const overCap = overCapacityDays.some((o) => o.date === key);
           return (
             <div
               key={key}
-              className={`min-h-[4.5rem] sm:min-h-[5.5rem] bg-white p-1 sm:p-1.5 ${
-                inMonth ? "" : "opacity-40"
-              }`}
+              className={`min-h-[4.5rem] sm:min-h-[5.5rem] p-1 sm:p-1.5 ${
+                overCap ? "bg-rose-50 ring-1 ring-inset ring-rose-300" : "bg-white"
+              } ${inMonth ? "" : "opacity-40"}`}
             >
               <div className="mb-0.5 text-right text-[11px] sm:text-xs font-medium text-slate-500">
                 {format(day, "d")}

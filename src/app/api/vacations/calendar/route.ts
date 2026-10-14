@@ -3,11 +3,18 @@ import {
   addDays,
   endOfMonth,
   format,
-  parseISO,
   startOfMonth,
 } from "date-fns";
-import { getEducators, getVacationRequests } from "@/lib/store";
-import { expandAcceptedVacationToDays } from "@/lib/vacation-day-capacity";
+import {
+  getEducators,
+  getVacationRequests,
+  getVacationRules,
+} from "@/lib/store";
+import {
+  expandAcceptedVacationToDays,
+  findDaysOverConcurrentLimit,
+} from "@/lib/vacation-day-capacity";
+import { parseVacationDate } from "@/lib/vacation-dates";
 import { canViewVacationStaffCalendar } from "@/lib/vacation-staff-calendar";
 
 export async function GET(request: NextRequest) {
@@ -30,11 +37,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
     }
 
-    const monthStart = startOfMonth(parseISO(`${monthParam}-01`));
+    const monthStart = startOfMonth(parseVacationDate(`${monthParam}-01`));
     const monthEnd = endOfMonth(monthStart);
-    const vacationRequests = await getVacationRequests();
+    const [vacationRequests, rules] = await Promise.all([
+      getVacationRequests(),
+      getVacationRules(),
+    ]);
     const dayMap = expandAcceptedVacationToDays(
       vacationRequests,
+      monthStart,
+      monthEnd
+    );
+    const overCapacityDays = findDaysOverConcurrentLimit(
+      rules,
+      vacationRequests,
+      educators,
       monthStart,
       monthEnd
     );
@@ -50,7 +67,7 @@ export async function GET(request: NextRequest) {
       cursor = addDays(cursor, 1);
     }
 
-    return NextResponse.json({ month: monthParam, days });
+    return NextResponse.json({ month: monthParam, days, overCapacityDays });
   } catch {
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }

@@ -2,13 +2,13 @@ import {
   addDays,
   differenceInDays,
   format,
-  parseISO,
   startOfDay,
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import type { Educator, VacationRequest, VacationRules } from "@/types";
 import { getBiWeekFromDate } from "./biweek";
 import { isDemoEducatorId } from "./demo-educator";
+import { parseVacationDate } from "./vacation-dates";
 
 export type DayCapacityRules = {
   maxConcurrent: number;
@@ -42,8 +42,8 @@ function isAcceptedOnDay(
 ): boolean {
   if (req.status !== "accepted") return false;
   try {
-    const s = startOfDay(parseISO(req.startDate));
-    const e = startOfDay(parseISO(req.endDate));
+    const s = startOfDay(parseVacationDate(req.startDate));
+    const e = startOfDay(parseVacationDate(req.endDate));
     const d = startOfDay(day);
     return d >= s && d <= e;
   } catch {
@@ -174,8 +174,8 @@ export function analyzeVacationPeriodByDay(
   requiresManualReview: boolean;
   allDaysOk: boolean;
 } {
-  const start = parseISO(startDate);
-  const end = parseISO(endDate);
+  const start = startOfDay(parseVacationDate(startDate));
+  const end = startOfDay(parseVacationDate(endDate));
   const conflictingDates: string[] = [];
   const validDays: Date[] = [];
   let requiresManualReview = false;
@@ -214,7 +214,7 @@ export function analyzeVacationPeriodByDay(
 export function formatConflictDatesList(isoDates: string[]): string {
   if (isoDates.length === 0) return "";
   const shown = isoDates.slice(0, 8).map((d) =>
-    format(parseISO(d), "d MMM yyyy", { locale: fr })
+    format(parseVacationDate(d), "d MMM yyyy", { locale: fr })
   );
   const extra =
     isoDates.length > 8 ? ` (+${isoDates.length - 8} autre(s) jour(s))` : "";
@@ -232,8 +232,8 @@ export function expandAcceptedVacationToDays(
   for (const r of requests) {
     if (r.status !== "accepted" || isDemoEducatorId(r.educatorId)) continue;
     try {
-      const s = startOfDay(parseISO(r.startDate));
-      const e = startOfDay(parseISO(r.endDate));
+      const s = startOfDay(parseVacationDate(r.startDate));
+      const e = startOfDay(parseVacationDate(r.endDate));
       let d = s < rangeStart ? rangeStart : s;
       const last = e > rangeEnd ? rangeEnd : e;
       d = startOfDay(d);
@@ -258,4 +258,37 @@ export function expandAcceptedVacationToDays(
     list.sort((a, b) => a.educatorName.localeCompare(b.educatorName, "fr"));
   });
   return map;
+}
+
+/** Jours où le nombre de congés acceptés dépasse la limite configurée (incohérence à corriger). */
+export function findDaysOverConcurrentLimit(
+  rules: VacationRules,
+  requests: VacationRequest[],
+  educators: Educator[],
+  rangeStart: Date,
+  rangeEnd: Date
+): { date: string; educatorNames: string[]; count: number; limit: number }[] {
+  const map = expandAcceptedVacationToDays(requests, rangeStart, rangeEnd);
+  const out: {
+    date: string;
+    educatorNames: string[];
+    count: number;
+    limit: number;
+  }[] = [];
+
+  map.forEach((list, dateKey) => {
+    const day = parseVacationDate(dateKey);
+    const limit = getRulesForDate(day, rules).maxConcurrent;
+    if (list.length > limit) {
+      out.push({
+        date: dateKey,
+        educatorNames: list.map((x) => x.educatorName),
+        count: list.length,
+        limit,
+      });
+    }
+  });
+
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  return out;
 }
