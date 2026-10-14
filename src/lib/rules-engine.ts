@@ -1,6 +1,5 @@
 import { addDays, differenceInDays, isWithinInterval, parseISO } from "date-fns";
 import type { Educator, VacationRequest, VacationRules } from "@/types";
-import { getBiWeekFromDate } from "./biweek";
 import { isDemoEducatorId } from "./demo-educator";
 import {
   clipIntervalToVacationYear,
@@ -8,6 +7,10 @@ import {
   getVacationYearStartYear,
   isDateInVacationYear,
 } from "./vacation-year";
+import {
+  analyzeVacationPeriodByDay,
+  formatConflictDatesList,
+} from "./vacation-day-capacity";
 
 export interface ValidationContext {
   rules: VacationRules;
@@ -20,56 +23,10 @@ export interface ValidationResult {
   reason?: string;
   /** Demande valide mais dernière place : admin doit évaluer manuellement */
   requiresManualReview?: boolean;
-}
-
-/** Récupère les règles applicables pour une date donnée (selon la semaine) */
-function getRulesForDate(
-  date: Date,
-  rules: VacationRules
-): {
-  maxConcurrent: number;
-  minQualified: number;
-  minNonQualified: number;
-} {
-  const biWeek = getBiWeekFromDate(date);
-  const override = rules.biWeekRules?.[biWeek - 1];
-  if (override) {
-    return {
-      maxConcurrent:
-        override.maxConcurrentVacations ?? rules.maxConcurrentVacations,
-      minQualified:
-        override.minQualifiedPresent ?? rules.minQualifiedPresent,
-      minNonQualified:
-        override.minNonQualifiedPresent ?? rules.minNonQualifiedPresent,
-    };
-  }
-  return {
-    maxConcurrent: rules.maxConcurrentVacations,
-    minQualified: rules.minQualifiedPresent,
-    minNonQualified: rules.minNonQualifiedPresent,
-  };
-}
-
-/** Vérifie les règles pour toute la période (prend le plus restrictif) */
-function getPeriodRules(
-  start: Date,
-  end: Date,
-  rules: VacationRules
-): { maxConcurrent: number; minQualified: number; minNonQualified: number } {
-  let maxConcurrent = rules.maxConcurrentVacations;
-  let minQualified = rules.minQualifiedPresent;
-  let minNonQualified = rules.minNonQualifiedPresent;
-
-  const current = new Date(start);
-  while (current <= end) {
-    const dayRules = getRulesForDate(current, rules);
-    maxConcurrent = Math.min(maxConcurrent, dayRules.maxConcurrent);
-    minQualified = Math.max(minQualified, dayRules.minQualified);
-    minNonQualified = Math.max(minNonQualified, dayRules.minNonQualified);
-    current.setDate(current.getDate() + 1);
-  }
-
-  return { maxConcurrent, minQualified, minNonQualified };
+  /** Jours où la limite simultanée / effectif bloque la demande */
+  conflictingDates?: string[];
+  /** Périodes contiguës disponibles dans la demande initiale */
+  suggestedPeriods?: { startDate: string; endDate: string }[];
 }
 
 /** Fusion des périodes qui se chevauchent ou se suivent (jour contigu), puis somme des jours */
@@ -141,25 +98,6 @@ function acceptedRequestCountForYear(
   }).length;
 }
 
-function overlaps(
-  req: VacationRequest,
-  start: Date,
-  end: Date
-): boolean {
-  if (req.status !== "accepted") return false;
-  try {
-    const rStart = parseISO(req.startDate);
-    const rEnd = parseISO(req.endDate);
-    return (
-      isWithinInterval(start, { start: rStart, end: rEnd }) ||
-      isWithinInterval(end, { start: rStart, end: rEnd }) ||
-      (rStart >= start && rEnd <= end)
-    );
-  } catch {
-    return false;
-  }
-}
-
 export function validateVacationRequest(
   request: Omit<VacationRequest, "id" | "createdAt" | "status">,
   context: ValidationContext
@@ -181,8 +119,6 @@ export function validateVacationRequest(
   const poolExcludingDemoAccepts = vacationRequests.filter(
     (r) => !isDemoEducatorId(r.educatorId)
   );
-
-  const periodRules = getPeriodRules(start, end, rules);
 
   // Préavis minimum
   const noticeDays = differenceInDays(start, today);
@@ -297,92 +233,42 @@ export function validateVacationRequest(
     return { valid: true, requiresManualReview: true };
   }
 
-  // Compter les éducatrices qualifiées / non qualifiées (hors compte démo)
-  const educatorIds = educators
-    .filter((e) => e.role === "educatrice" && !isDemoEducatorId(e.id))
-    .map((e) => e.id);
-  const qualifiedCount = educators.filter(
-    (e) =>
-      e.role === "educatrice" &&
-      e.isQualified &&
-      !isDemoEducatorId(e.id)
-  ).length;
-  const nonQualifiedCount = educatorIds.length - qualifiedCount;
-
-  const requesterQualified = requester?.isQualified ?? false;
-
-  // Vacances acceptées sur la période : sans celles du compte démo (fictives pour les autres)
-  const overlappingAccepted = poolExcludingDemoAccepts.filter((r) =>
-    overlaps(r, start, end)
-  );
-
-  // Éducatrices uniques en vacances pendant cette période (par statut)
-  const qualifiedOnVacation = new Set(
-    overlappingAccepted
-      .filter((r) => {
-        const ed = educators.find((e) => e.id === r.educatorId);
-        return (
-          ed &&
-          ed.role === "educatrice" &&
-          ed.isQualified &&
-          !isDemoEducatorId(r.educatorId)
-        );
-      })
-      .map((r) => r.educatorId)
-  ).size;
-  const nonQualifiedOnVacation = new Set(
-    overlappingAccepted
-      .filter((r) => {
-        const ed = educators.find((e) => e.id === r.educatorId);
-        return (
-          ed &&
-          ed.role === "educatrice" &&
-          !ed.isQualified &&
-          !isDemoEducatorId(r.educatorId)
-        );
-      })
-      .map((r) => r.educatorId)
-  ).size;
-
-  // Avec la nouvelle demande acceptée :
-  const qualifiedAway = qualifiedOnVacation + (requesterQualified ? 1 : 0);
-  const nonQualifiedAway =
-    nonQualifiedOnVacation + (requesterQualified ? 0 : 1);
-
-  if (qualifiedCount - qualifiedAway < periodRules.minQualified) {
-    return {
-      valid: false,
-      reason: `Il doit rester au moins ${periodRules.minQualified} éducatrice(s) qualifiée(s) présente(s).`,
-    };
-  }
-  if (nonQualifiedCount - nonQualifiedAway < periodRules.minNonQualified) {
-    return {
-      valid: false,
-      reason: `Il doit rester au moins ${periodRules.minNonQualified} éducatrice(s) non qualifiée(s) présente(s).`,
-    };
+  if (!requester) {
+    return { valid: false, reason: "Profil éducatrice introuvable." };
   }
 
-  // Vacances simultanées (nombre de personnes différentes)
-  const uniqueOverlapping = new Set(
-    overlappingAccepted.map((r) => r.educatorId)
+  const analysis = analyzeVacationPeriodByDay(
+    request.startDate,
+    request.endDate,
+    requester,
+    rules,
+    poolExcludingDemoAccepts,
+    educators
   );
 
-  if (uniqueOverlapping.size < periodRules.maxConcurrent) {
-    const isLastSpot =
-      uniqueOverlapping.size === periodRules.maxConcurrent - 1;
-    const needsManualReview =
-      periodRules.maxConcurrent >= 3 && isLastSpot;
-
+  if (analysis.allDaysOk) {
     return {
       valid: true,
-      requiresManualReview: needsManualReview,
+      requiresManualReview: analysis.requiresManualReview,
     };
   }
 
-  // À la limite : on refuse la nouvelle demande (première arrivée, première servie)
-  // Pas de « bump » : on ne retire jamais un congé déjà accepté
+  const conflictList = formatConflictDatesList(analysis.conflictingDates);
+  const hasSuggestions = analysis.suggestedPeriods.length > 0;
+
+  let reason: string;
+  if (analysis.conflictingDates.length > 0 && hasSuggestions) {
+    reason = `Certaines dates dépassent la limite de congés simultanés ou l'effectif minimum (${conflictList}). D'autres jours de votre demande restent disponibles — choisissez une période suggérée ci-dessous.`;
+  } else if (analysis.conflictingDates.length > 0) {
+    reason = `Aucun jour disponible dans cette période (${conflictList}). Maximum ${rules.maxConcurrentVacations} personne(s) en vacances simultanément par jour, ou effectif insuffisant.`;
+  } else {
+    reason = `Il doit rester assez d'éducatrices qualifiées ou non qualifiées présentes chaque jour de la période.`;
+  }
+
   return {
     valid: false,
-    reason: `Maximum ${periodRules.maxConcurrent} personne(s) en vacances simultanément pendant cette période.`,
+    reason,
+    conflictingDates: analysis.conflictingDates,
+    suggestedPeriods: analysis.suggestedPeriods,
   };
 }

@@ -3,10 +3,20 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Calendar, LogOut, Home, ArrowLeft, Lock, Inbox, Wallet } from "lucide-react";
+import {
+  Calendar,
+  LogOut,
+  Home,
+  ArrowLeft,
+  Lock,
+  Inbox,
+  Wallet,
+  CalendarDays,
+} from "lucide-react";
 import type { Educator } from "@/types";
 import { canAccessComptabilite } from "@/lib/accounting-staff";
 import { isSecretaryInboxStaff } from "@/lib/staff-actor";
+import { canViewVacationStaffCalendar } from "@/lib/vacation-staff-calendar";
 
 export default function DashboardLayout({
   children,
@@ -124,6 +134,18 @@ export default function DashboardLayout({
               >
                 <Wallet className="h-5 w-5" />
                 <span className="hidden lg:inline text-sm font-medium">Compta</span>
+              </Link>
+            )}
+            {canViewVacationStaffCalendar(user) && (
+              <Link
+                href="/calendrier-conges"
+                className="flex items-center gap-1 rounded-lg p-2.5 sm:px-3 sm:py-2 text-slate-600 transition-colors hover:bg-primary-50 hover:text-primary-700 touch-manipulation"
+                title="Calendrier des congés"
+              >
+                <CalendarDays className="h-5 w-5" />
+                <span className="hidden lg:inline text-sm font-medium">
+                  Congés
+                </span>
               </Link>
             )}
             {isSecretaryInboxStaff(user) && (

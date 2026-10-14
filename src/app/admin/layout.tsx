@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { canAccessComptabilite } from "@/lib/accounting-staff";
 import Link from "next/link";
-import { LogOut, Home, Shield, Wallet } from "lucide-react";
+import { LogOut, Home, Shield, Wallet, CalendarDays } from "lucide-react";
 import type { Educator } from "@/types";
 
 export default function AdminLayout({
@@ -73,6 +73,14 @@ export default function AdminLayout({
           </Link>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+            <Link
+              href="/calendrier-conges"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+              title="Calendrier des congés acceptés"
+            >
+              <CalendarDays className="h-4 w-4" />
+              <span className="hidden sm:inline">Congés</span>
+            </Link>
             <Link
               href="/admin/comptabilite"
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors"

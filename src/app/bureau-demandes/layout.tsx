@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Calendar, LogOut, Home, FileText } from "lucide-react";
+import { Calendar, LogOut, Home, FileText, CalendarDays } from "lucide-react";
 import type { Educator } from "@/types";
 import { isSecretaryInboxStaff } from "@/lib/staff-actor";
 
@@ -64,6 +64,13 @@ export default function BureauDemandesLayout({
             <p className="hidden sm:block text-sm font-medium text-slate-800">
               {user.name}
             </p>
+            <Link
+              href="/calendrier-conges"
+              className="rounded-lg p-2.5 sm:p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 touch-manipulation"
+              title="Calendrier des congés acceptés"
+            >
+              <CalendarDays className="h-5 w-5" />
+            </Link>
             <Link
               href="/dashboard"
               className="rounded-lg p-2.5 sm:p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 touch-manipulation"

@@ -83,6 +83,8 @@ export async function POST(request: NextRequest) {
         request: { ...rejectedRequest, rejectionReason: validation.reason },
         accepted: false,
         error: validation.reason,
+        conflictingDates: validation.conflictingDates,
+        suggestedPeriods: validation.suggestedPeriods,
       });
     }
 

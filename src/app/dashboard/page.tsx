@@ -118,6 +118,8 @@ export default function DashboardPage() {
     endDate: string;
     reason?: string;
     rejectionReason?: string;
+    conflictingDates?: string[];
+    suggestedPeriods?: { startDate: string; endDate: string }[];
   } | null>(null);
   const [expandedAppealFor, setExpandedAppealFor] = useState<string | null>(null);
 
@@ -273,8 +275,61 @@ export default function DashboardPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const applyVacationSubmitResult = (
+    data: {
+      request?: VacationRequest;
+      accepted?: boolean;
+      pending?: boolean;
+      error?: string;
+      conflictingDates?: string[];
+      suggestedPeriods?: { startDate: string; endDate: string }[];
+    },
+    submitted: { startDate: string; endDate: string; reason?: string }
+  ) => {
+    if (data.request) {
+      setRequests((prev) => [data.request!, ...prev]);
+    }
+    const isRejected = !data.accepted && !data.pending;
+    if (isRejected && data.request) {
+      setLastRejectedContext({
+        requestId: data.request.id,
+        educatorName: data.request.educatorName,
+        startDate: data.request.startDate,
+        endDate: data.request.endDate,
+        reason: data.request.reason,
+        rejectionReason: data.request.rejectionReason,
+        conflictingDates: data.conflictingDates,
+        suggestedPeriods: data.suggestedPeriods,
+      });
+    } else if (isRejected) {
+      setLastRejectedContext({
+        educatorName: user!.name,
+        startDate: submitted.startDate,
+        endDate: submitted.endDate,
+        reason: submitted.reason,
+        rejectionReason: data.error,
+        conflictingDates: data.conflictingDates,
+        suggestedPeriods: data.suggestedPeriods,
+      });
+    } else {
+      setLastRejectedContext(null);
+    }
+    if (!isRejected) {
+      setForm({ startDate: "", endDate: "", reason: "" });
+      setShowForm(false);
+    }
+    setSubmitStatus(
+      data.accepted ? "success" : data.pending ? "pending" : "rejected"
+    );
+    if (!data.accepted && !data.pending && data.error)
+      setErrorMessage(data.error);
+  };
+
+  const submitVacationRequest = async (payload: {
+    startDate: string;
+    endDate: string;
+    reason?: string;
+  }) => {
     if (!user || user.role === "admin") return;
     setSubmitStatus("idle");
     setErrorMessage("");
@@ -286,9 +341,9 @@ export default function DashboardPage() {
         body: JSON.stringify({
           educatorId: user.id,
           educatorName: user.name,
-          startDate: form.startDate,
-          endDate: form.endDate,
-          reason: form.reason || undefined,
+          startDate: payload.startDate,
+          endDate: payload.endDate,
+          reason: payload.reason || undefined,
         }),
       });
 
@@ -299,47 +354,30 @@ export default function DashboardPage() {
         setErrorMessage(data.error || "Erreur lors de la demande");
         setLastRejectedContext({
           educatorName: user.name,
-          startDate: form.startDate,
-          endDate: form.endDate,
-          reason: form.reason || undefined,
+          startDate: payload.startDate,
+          endDate: payload.endDate,
+          reason: payload.reason,
           rejectionReason: data.error,
+          conflictingDates: data.conflictingDates,
+          suggestedPeriods: data.suggestedPeriods,
         });
         return;
       }
 
-      if (data.request) {
-        setRequests((prev) => [data.request, ...prev]);
-      }
-      const isRejected = !data.accepted && !data.pending;
-      if (isRejected && data.request) {
-        setLastRejectedContext({
-          requestId: data.request.id,
-          educatorName: data.request.educatorName,
-          startDate: data.request.startDate,
-          endDate: data.request.endDate,
-          reason: data.request.reason,
-          rejectionReason: data.request.rejectionReason,
-        });
-      } else {
-        setLastRejectedContext(null);
-      }
-      if (!isRejected) {
-        setForm({ startDate: "", endDate: "", reason: "" });
-        setShowForm(false);
-      }
-      setSubmitStatus(
-        data.accepted
-          ? "success"
-          : data.pending
-          ? "pending"
-          : "rejected"
-      );
-      if (!data.accepted && !data.pending && data.error)
-        setErrorMessage(data.error);
+      applyVacationSubmitResult(data, payload);
     } catch {
       setSubmitStatus("error");
       setErrorMessage("Erreur de connexion");
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitVacationRequest({
+      startDate: form.startDate,
+      endDate: form.endDate,
+      reason: form.reason || undefined,
+    });
   };
 
   const StatusBadge = ({ status }: { status: VacationRequest["status"] }) => {
@@ -1195,6 +1233,57 @@ export default function DashboardPage() {
           📋 Votre demande est sous évaluation. L&apos;administrateur vous
           répondra par acceptation ou refus. Actualisez la page pour voir les
           mises à jour.
+        </div>
+      )}
+      {(submitStatus === "rejected" || submitStatus === "error") &&
+        lastRejectedContext?.suggestedPeriods &&
+        lastRejectedContext.suggestedPeriods.length > 0 && (
+        <div className="rounded-xl border border-primary-200 bg-primary-50/80 p-4 text-sm text-slate-800">
+          <p className="font-medium text-primary-900 mb-2">
+            Périodes disponibles dans votre demande
+          </p>
+          <p className="text-slate-600 mb-3">
+            Seuls certains jours sont complets. Vous pouvez soumettre une
+            demande plus courte :
+          </p>
+          <ul className="flex flex-col gap-2">
+            {lastRejectedContext.suggestedPeriods.map((p) => (
+              <li key={`${p.startDate}-${p.endDate}`}>
+                <button
+                  type="button"
+                  className="w-full rounded-lg border border-primary-300 bg-white px-3 py-2.5 text-left text-sm font-medium text-primary-800 hover:bg-primary-100 touch-manipulation"
+                  onClick={() => {
+                    setForm((f) => ({
+                      ...f,
+                      startDate: p.startDate,
+                      endDate: p.endDate,
+                    }));
+                    setShowForm(true);
+                    void submitVacationRequest({
+                      startDate: p.startDate,
+                      endDate: p.endDate,
+                      reason: lastRejectedContext.reason ?? form.reason,
+                    });
+                  }}
+                >
+                  Du{" "}
+                  {format(parseISO(p.startDate), "d MMM yyyy", { locale: fr })}
+                  {p.endDate !== p.startDate && (
+                    <>
+                      {" "}
+                      au{" "}
+                      {format(parseISO(p.endDate), "d MMM yyyy", {
+                        locale: fr,
+                      })}
+                    </>
+                  )}
+                  <span className="block text-xs font-normal text-slate-500 mt-0.5">
+                    Soumettre cette période
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {(submitStatus === "rejected" || submitStatus === "error") &&
