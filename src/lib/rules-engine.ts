@@ -10,6 +10,7 @@ import {
 import {
   analyzeVacationPeriodByDay,
   formatConflictDatesList,
+  maxConcurrentForDate,
 } from "./vacation-day-capacity";
 import { parseVacationDate } from "./vacation-dates";
 
@@ -261,7 +262,16 @@ export function validateVacationRequest(
   if (analysis.conflictingDates.length > 0 && hasSuggestions) {
     reason = `Certaines dates dépassent la limite de congés simultanés ou l'effectif minimum (${conflictList}). D'autres jours de votre demande restent disponibles — choisissez une période suggérée ci-dessous.`;
   } else if (analysis.conflictingDates.length > 0) {
-    reason = `Aucun jour disponible dans cette période (${conflictList}). Maximum ${rules.maxConcurrentVacations} personne(s) en vacances simultanément par jour, ou effectif insuffisant.`;
+    const limits = Array.from(
+      new Set(
+        analysis.conflictingDates.map((d) => maxConcurrentForDate(d, rules))
+      )
+    ).sort((a, b) => a - b);
+    const limitHint =
+      limits.length === 1
+        ? `Maximum ${limits[0]} personne(s) en vacances simultanément ce jour-là (règle de la semaine).`
+        : `Maximum variable selon la semaine (${limits.join(" ou ")} personne(s) selon les jours).`;
+    reason = `Aucun jour disponible dans cette période (${conflictList}). ${limitHint} Ou effectif insuffisant.`;
   } else {
     reason = `Il doit rester assez d'éducatrices qualifiées ou non qualifiées présentes chaque jour de la période.`;
   }

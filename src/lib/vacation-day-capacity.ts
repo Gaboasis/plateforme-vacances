@@ -194,7 +194,8 @@ export function analyzeVacationPeriodByDay(
     const iso = format(current, "yyyy-MM-dd");
     if (check.ok) {
       validDays.push(new Date(current));
-      if (check.isLastSpot && rules.maxConcurrentVacations >= 3) {
+      const dayMax = getRulesForDate(current, rules).maxConcurrent;
+      if (check.isLastSpot && dayMax >= 3) {
         requiresManualReview = true;
       }
     } else {
@@ -209,6 +210,14 @@ export function analyzeVacationPeriodByDay(
     requiresManualReview,
     allDaysOk: conflictingDates.length === 0,
   };
+}
+
+/** Limite simultanée affichée pour une date en conflit (semaine ISO / règle admin). */
+export function maxConcurrentForDate(
+  isoDate: string,
+  rules: VacationRules
+): number {
+  return getRulesForDate(parseVacationDate(isoDate), rules).maxConcurrent;
 }
 
 export function formatConflictDatesList(isoDates: string[]): string {
