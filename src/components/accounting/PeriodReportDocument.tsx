@@ -148,10 +148,16 @@ export function PeriodReportDocument({
       ? report.fixedExpenses.map((f) => [
           f.label,
           formatCad(f.amountCents),
+          f.periodStart === f.periodEnd
+            ? f.periodStart
+            : `${f.periodStart} → ${f.periodEnd}`,
+          f.invoiceDate && f.invoiceDate !== f.periodStart
+            ? `${f.invoiceDate}${f.splitGroupId ? " (répartie)" : ""}`
+            : "—",
           f.sourceName ?? "—",
           f.note ?? "—",
         ])
-      : [["—", "—", "—", "Aucune dépense fixe"]];
+      : [["—", "—", "—", "—", "—", "Aucune dépense fixe"]];
 
   const journalExpRows =
     journalExpItems.length > 0
@@ -161,8 +167,16 @@ export function PeriodReportDocument({
             : "—",
           e.label,
           formatCad(e.amountCents),
+          e.accountingPeriodStart && e.accountingPeriodEnd
+            ? e.accountingPeriodStart === e.accountingPeriodEnd
+              ? e.accountingPeriodStart
+              : `${e.accountingPeriodStart} → ${e.accountingPeriodEnd}`
+            : "—",
+          e.splitGroupId && e.invoiceDate
+            ? `${e.invoiceDate} (répartie)`
+            : "—",
         ])
-      : [["—", "Aucune autre dépense au journal", "—"]];
+      : [["—", "Aucune autre dépense au journal", "—", "—", "—"]];
 
   const payrollTotalCents =
     report.expenses.educatorGrossCents +
@@ -315,15 +329,19 @@ export function PeriodReportDocument({
           <div className="mt-3">
             <ReportTable
               headers={[
-                { label: "Date" },
+                { label: "Date journal" },
                 { label: "Description" },
                 { label: "Montant ($)", align: "right" },
+                { label: "Période comptable" },
+                { label: "Facture" },
               ]}
               rows={journalExpRows}
               foot={[
                 "Total",
                 "",
                 formatCad(report.expenses.otherDailyCents),
+                "",
+                "",
               ]}
             />
           </div>
@@ -336,6 +354,8 @@ export function PeriodReportDocument({
               headers={[
                 { label: "Dépense" },
                 { label: "Montant ($)", align: "right" },
+                { label: "Période comptable" },
+                { label: "Facture" },
                 { label: "Responsable" },
                 { label: "Note" },
               ]}
@@ -343,6 +363,8 @@ export function PeriodReportDocument({
               foot={[
                 "Total",
                 formatCad(report.expenses.fixedExpensesCents),
+                "",
+                "",
                 "",
                 "",
               ]}

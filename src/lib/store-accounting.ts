@@ -12,9 +12,17 @@ import type {
   AccountingConfig,
   DailyJournal,
   EducatorPaySummary,
+  FixedExpenseEntry,
   JournalLine,
   JournalLineCategory,
 } from "@/types";
+import {
+  isValidMonthKey,
+  monthBounds,
+  sortMonthKeys,
+  splitAmountCents,
+} from "./fixed-expense-split";
+import { randomUUID } from "crypto";
 
 function lineToType(row: {
   id: string;
@@ -30,6 +38,10 @@ function lineToType(row: {
   childCount: number | null;
   dailyRateCents: number | null;
   sortOrder: number;
+  invoiceDate: Date | null;
+  accountingPeriodStart: Date | null;
+  accountingPeriodEnd: Date | null;
+  splitGroupId: string | null;
 }): JournalLine {
   return {
     id: row.id,
@@ -45,6 +57,10 @@ function lineToType(row: {
     childCount: row.childCount ?? undefined,
     dailyRateCents: row.dailyRateCents ?? undefined,
     sortOrder: row.sortOrder,
+    invoiceDate: row.invoiceDate?.toISOString().slice(0, 10),
+    accountingPeriodStart: row.accountingPeriodStart?.toISOString().slice(0, 10),
+    accountingPeriodEnd: row.accountingPeriodEnd?.toISOString().slice(0, 10),
+    splitGroupId: row.splitGroupId ?? undefined,
   };
 }
 
@@ -212,25 +228,60 @@ export async function getEducatorPaySummaries(): Promise<EducatorPaySummary[]> {
   }));
 }
 
+function fixedExpenseRowToType(row: {
+  id: string;
+  periodStart: Date;
+  periodEnd: Date;
+  label: string;
+  amountCents: number;
+  sourceName: string | null;
+  note: string | null;
+  invoiceDate: Date | null;
+  splitGroupId: string | null;
+}): FixedExpenseEntry {
+  return {
+    id: row.id,
+    periodStart: row.periodStart.toISOString().slice(0, 10),
+    periodEnd: row.periodEnd.toISOString().slice(0, 10),
+    label: row.label,
+    amountCents: row.amountCents,
+    sourceName: row.sourceName ?? undefined,
+    note: row.note ?? undefined,
+    invoiceDate: row.invoiceDate?.toISOString().slice(0, 10),
+    splitGroupId: row.splitGroupId ?? undefined,
+  };
+}
+
 export async function listFixedExpensesForPeriod(
   fromStr: string,
   toStr: string
-) {
+): Promise<FixedExpenseEntry[]> {
   const from = parseJournalDate(fromStr);
   const to = parseJournalDate(toStr);
   const rows = await prisma.fixedExpenseEntry.findMany({
     where: { periodStart: { lte: to }, periodEnd: { gte: from } },
     orderBy: [{ label: "asc" }, { createdAt: "asc" }],
   });
-  return rows.map((f) => ({
-    id: f.id,
-    periodStart: f.periodStart.toISOString().slice(0, 10),
-    periodEnd: f.periodEnd.toISOString().slice(0, 10),
-    label: f.label,
-    amountCents: f.amountCents,
-    sourceName: f.sourceName ?? undefined,
-    note: f.note ?? undefined,
-  }));
+  return rows.map(fixedExpenseRowToType);
+}
+
+/** Dépenses saisies à une date de journal (facture du jour), y compris réparties sur d'autres mois. */
+export async function listFixedExpensesForJournalDay(
+  journalDateStr: string
+): Promise<FixedExpenseEntry[]> {
+  const d = parseJournalDate(journalDateStr);
+  const rows = await prisma.fixedExpenseEntry.findMany({
+    where: {
+      OR: [
+        { invoiceDate: d },
+        {
+          AND: [{ periodStart: d }, { periodEnd: d }, { invoiceDate: null }],
+        },
+      ],
+    },
+    orderBy: [{ createdAt: "asc" }, { label: "asc" }],
+  });
+  return rows.map(fixedExpenseRowToType);
 }
 
 export async function createFixedExpenseEntry(data: {
@@ -240,6 +291,8 @@ export async function createFixedExpenseEntry(data: {
   amountCents: number;
   sourceName?: string;
   note?: string;
+  invoiceDate?: string;
+  splitGroupId?: string;
 }) {
   const row = await prisma.fixedExpenseEntry.create({
     data: {
@@ -249,20 +302,82 @@ export async function createFixedExpenseEntry(data: {
       amountCents: Math.max(0, Math.round(data.amountCents)),
       sourceName: data.sourceName?.trim() || null,
       note: data.note?.trim() || null,
+      invoiceDate: data.invoiceDate
+        ? parseJournalDate(data.invoiceDate)
+        : null,
+      splitGroupId: data.splitGroupId?.trim() || null,
     },
   });
-  return {
-    id: row.id,
-    periodStart: row.periodStart.toISOString().slice(0, 10),
-    periodEnd: row.periodEnd.toISOString().slice(0, 10),
-    label: row.label,
-    amountCents: row.amountCents,
-    sourceName: row.sourceName ?? undefined,
-    note: row.note ?? undefined,
-  };
+  return fixedExpenseRowToType(row);
+}
+
+export async function createFixedExpenseWithMonthSplit(data: {
+  invoiceDate: string;
+  label: string;
+  amountCents: number;
+  sourceName?: string;
+  note?: string;
+  allocateToMonths: string[];
+}): Promise<FixedExpenseEntry[]> {
+  const months = sortMonthKeys(
+    Array.from(new Set(data.allocateToMonths.filter(isValidMonthKey)))
+  );
+  if (months.length === 0) {
+    throw new Error("Choisissez au moins un mois.");
+  }
+  const total = Math.max(0, Math.round(data.amountCents));
+  if (total <= 0) throw new Error("Montant invalide.");
+
+  if (months.length === 1) {
+    const bounds = monthBounds(months[0]!);
+    const single = await createFixedExpenseEntry({
+      periodStart: bounds.periodStart,
+      periodEnd: bounds.periodEnd,
+      label: data.label,
+      amountCents: total,
+      sourceName: data.sourceName,
+      note: data.note,
+      invoiceDate: data.invoiceDate,
+    });
+    return [single];
+  }
+
+  const splitGroupId = randomUUID();
+  const parts = splitAmountCents(total, months.length);
+  const created: FixedExpenseEntry[] = [];
+
+  for (let i = 0; i < months.length; i++) {
+    const bounds = monthBounds(months[i]!);
+    const partNote = [
+      data.note?.trim(),
+      `Tranche ${i + 1}/${months.length} — période comptable`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const row = await createFixedExpenseEntry({
+      periodStart: bounds.periodStart,
+      periodEnd: bounds.periodEnd,
+      label: data.label,
+      amountCents: parts[i]!,
+      sourceName: data.sourceName,
+      note: partNote || undefined,
+      invoiceDate: data.invoiceDate,
+      splitGroupId,
+    });
+    created.push(row);
+  }
+  return created;
 }
 
 export async function deleteFixedExpenseEntry(id: string) {
+  const existing = await prisma.fixedExpenseEntry.findUnique({ where: { id } });
+  if (!existing) return;
+  if (existing.splitGroupId) {
+    await prisma.fixedExpenseEntry.deleteMany({
+      where: { splitGroupId: existing.splitGroupId },
+    });
+    return;
+  }
   await prisma.fixedExpenseEntry.delete({ where: { id } });
 }
 
@@ -300,6 +415,16 @@ export async function saveDailyJournal(options: {
       childCount: line.childCount ?? null,
       dailyRateCents: line.dailyRateCents ?? null,
       sortOrder: line.sortOrder ?? index,
+      invoiceDate: line.invoiceDate
+        ? parseJournalDate(line.invoiceDate)
+        : null,
+      accountingPeriodStart: line.accountingPeriodStart
+        ? parseJournalDate(line.accountingPeriodStart)
+        : null,
+      accountingPeriodEnd: line.accountingPeriodEnd
+        ? parseJournalDate(line.accountingPeriodEnd)
+        : null,
+      splitGroupId: line.splitGroupId?.trim() || null,
     }))
     .filter(
       (l) =>
@@ -350,7 +475,12 @@ export async function deleteDailyJournalForDate(dateStr: string): Promise<boolea
   const journalDate = parseJournalDate(dateStr);
   const result = await prisma.$transaction(async (tx) => {
     await tx.fixedExpenseEntry.deleteMany({
-      where: { periodStart: journalDate, periodEnd: journalDate },
+      where: {
+        OR: [
+          { periodStart: journalDate, periodEnd: journalDate },
+          { invoiceDate: journalDate },
+        ],
+      },
     });
     const deleted = await tx.dailyJournal.deleteMany({
       where: { journalDate },

@@ -86,20 +86,36 @@ function lineFingerprint(line: {
   category: string;
   educatorId?: string | null;
   label?: string | null;
+  accountingPeriodStart?: string | null;
+  splitGroupId?: string | null;
 }): string {
-  return [
+  const base = [
     line.kind,
     line.category,
     (line.educatorId ?? "").trim(),
     (line.label ?? "").trim().toLowerCase(),
-  ].join("|");
+  ];
+  if (line.category === "expense_other" && line.accountingPeriodStart) {
+    base.push(
+      String(line.accountingPeriodStart).slice(0, 10),
+      (line.splitGroupId ?? "").trim()
+    );
+  }
+  return base.join("|");
 }
 
 function toComparable(
   line: JournalLine | JournalLineInput
 ): ComparableLine {
   return {
-    fingerprint: lineFingerprint(line),
+    fingerprint: lineFingerprint({
+      kind: line.kind,
+      category: line.category,
+      educatorId: line.educatorId,
+      label: line.label,
+      accountingPeriodStart: line.accountingPeriodStart ?? null,
+      splitGroupId: line.splitGroupId ?? null,
+    }),
     kind: line.kind,
     category: line.category as JournalLineCategory,
     label: (line.label ?? "").trim(),

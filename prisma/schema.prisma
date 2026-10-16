@@ -47,10 +47,16 @@ model FixedExpenseEntry {
   amountCents  Int
   sourceName   String?
   note         String?  @db.Text
+  /// Date de la facture / saisie au journal (peut différer de la période comptable)
+  invoiceDate  DateTime? @db.Date
+  /// Liens entre tranches d'une même facture répartie
+  splitGroupId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([periodStart, periodEnd])
+  @@index([invoiceDate])
+  @@index([splitGroupId])
 }
 
 model DailyJournal {
@@ -80,8 +86,14 @@ model JournalLine {
   childCount                  Int?
   dailyRateCents              Int?
   sortOrder                   Int          @default(0)
+  invoiceDate                 DateTime?    @db.Date
+  accountingPeriodStart       DateTime?    @db.Date
+  accountingPeriodEnd         DateTime?    @db.Date
+  splitGroupId                String?
 
   @@index([journalId])
+  @@index([category, accountingPeriodStart, accountingPeriodEnd])
+  @@index([splitGroupId])
 }
 
 model VacationRequest {

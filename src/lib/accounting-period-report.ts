@@ -36,6 +36,10 @@ export type ReportLineItem = {
   label: string;
   amountCents: number;
   journalDate?: string;
+  accountingPeriodStart?: string;
+  accountingPeriodEnd?: string;
+  invoiceDate?: string;
+  splitGroupId?: string;
 };
 
 export type PeriodReport = {
@@ -71,6 +75,10 @@ export type PeriodReport = {
     amountCents: number;
     sourceName?: string;
     note?: string;
+    periodStart: string;
+    periodEnd: string;
+    invoiceDate?: string;
+    splitGroupId?: string;
   }[];
 };
 
@@ -281,6 +289,8 @@ export async function buildPeriodReport(options: {
             }
             break;
           case "expense_other":
+            // Réparties sur plusieurs mois : traitées via requête dédiée (période comptable).
+            if (line.accountingPeriodStart != null) break;
             expenses.otherDailyCents += line.amountCents;
             journalExpenseItems.push({
               label: line.label?.trim() || "Autre dépense",
@@ -294,6 +304,31 @@ export async function buildPeriodReport(options: {
         expenses.totalCents += line.amountCents;
       }
     }
+  }
+
+  const splitOtherLines = await prisma.journalLine.findMany({
+    where: {
+      category: "expense_other",
+      accountingPeriodStart: { not: null, lte: to },
+      accountingPeriodEnd: { not: null, gte: from },
+    },
+    include: { journal: true },
+    orderBy: [{ journal: { journalDate: "asc" } }, { sortOrder: "asc" }],
+  });
+
+  for (const line of splitOtherLines) {
+    expenses.otherDailyCents += line.amountCents;
+    expenses.totalCents += line.amountCents;
+    const journalDay = line.journal.journalDate.toISOString().slice(0, 10);
+    journalExpenseItems.push({
+      label: line.label?.trim() || "Autre dépense",
+      amountCents: line.amountCents,
+      journalDate: journalDay,
+      accountingPeriodStart: line.accountingPeriodStart!.toISOString().slice(0, 10),
+      accountingPeriodEnd: line.accountingPeriodEnd!.toISOString().slice(0, 10),
+      invoiceDate: line.invoiceDate?.toISOString().slice(0, 10) ?? journalDay,
+      splitGroupId: line.splitGroupId ?? undefined,
+    });
   }
 
   const educatorStats: EducatorPeriodPayStats[] = Array.from(
@@ -373,6 +408,10 @@ export async function buildPeriodReport(options: {
     amountCents: f.amountCents,
     sourceName: f.sourceName ?? undefined,
     note: f.note ?? undefined,
+    periodStart: f.periodStart.toISOString().slice(0, 10),
+    periodEnd: f.periodEnd.toISOString().slice(0, 10),
+    invoiceDate: f.invoiceDate?.toISOString().slice(0, 10),
+    splitGroupId: f.splitGroupId ?? undefined,
   }));
   expenses.fixedExpensesCents = fixedExpenses.reduce((s, f) => s + f.amountCents, 0);
 

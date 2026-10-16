@@ -64,6 +64,12 @@ export interface JournalLine {
   childCount?: number;
   dailyRateCents?: number;
   sortOrder?: number;
+  /** Date de facture (saisie journal) — utile si répartie sur plusieurs mois */
+  invoiceDate?: string;
+  /** Période comptable (inclusif) pour l’analyse ; absent = jour du journal */
+  accountingPeriodStart?: string;
+  accountingPeriodEnd?: string;
+  splitGroupId?: string;
 }
 
 export interface DailyJournal {
@@ -94,6 +100,9 @@ export interface FixedExpenseEntry {
   amountCents: number;
   sourceName?: string;
   note?: string;
+  /** Date facture / jour de saisie au journal */
+  invoiceDate?: string;
+  splitGroupId?: string;
 }
 
 export interface VacationRequest {

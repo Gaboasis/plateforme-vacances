@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { findAccountingActor } from "@/lib/accounting-staff";
 import {
   createFixedExpenseEntry,
+  createFixedExpenseWithMonthSplit,
   deleteFixedExpenseEntry,
+  listFixedExpensesForJournalDay,
   listFixedExpensesForPeriod,
 } from "@/lib/store-accounting";
 import { getEducators } from "@/lib/store";
@@ -18,9 +20,15 @@ export async function GET(request: NextRequest) {
   try {
     const from = request.nextUrl.searchParams.get("from")?.trim() ?? "";
     const to = request.nextUrl.searchParams.get("to")?.trim() ?? "";
+    const journalDay =
+      request.nextUrl.searchParams.get("journalDay")?.trim() ?? "";
     const actorId = request.nextUrl.searchParams.get("_actorEducatorId")?.trim();
     if (!(await requireActor(actorId))) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+    }
+    if (journalDay) {
+      const items = await listFixedExpensesForJournalDay(journalDay);
+      return NextResponse.json({ items });
     }
     if (!from || !to) {
       return NextResponse.json({ error: "from et to requis." }, { status: 400 });
@@ -43,6 +51,8 @@ export async function POST(request: NextRequest) {
       amountDollars?: string;
       sourceName?: string;
       note?: string;
+      invoiceDate?: string;
+      allocateToMonths?: string[];
       _actorEducatorId?: string;
       editPassword?: string;
     };
@@ -72,15 +82,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Montant invalide." }, { status: 400 });
     }
 
-    if (periodStart === periodEnd) {
-      const auth = await assertCanEditLockedJournalDay({
-        dateStr: periodStart,
-        actorId,
-        editPassword: body.editPassword,
+    const invoiceDate =
+      body.invoiceDate?.trim() || periodStart || periodEnd;
+
+    const auth = await assertCanEditLockedJournalDay({
+      dateStr: invoiceDate,
+      actorId,
+      editPassword: body.editPassword,
+    });
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const months = Array.isArray(body.allocateToMonths)
+      ? body.allocateToMonths.filter((m) => typeof m === "string")
+      : [];
+
+    if (months.length > 1) {
+      const created = await createFixedExpenseWithMonthSplit({
+        invoiceDate,
+        label,
+        amountCents,
+        sourceName: body.sourceName,
+        note: body.note,
+        allocateToMonths: months,
       });
-      if (!auth.ok) {
-        return NextResponse.json({ error: auth.error }, { status: auth.status });
-      }
+      return NextResponse.json({ items: created, split: true }, { status: 201 });
     }
 
     const created = await createFixedExpenseEntry({
@@ -90,6 +117,8 @@ export async function POST(request: NextRequest) {
       amountCents,
       sourceName: body.sourceName,
       note: body.note,
+      invoiceDate:
+        periodStart === periodEnd ? invoiceDate : undefined,
     });
     return NextResponse.json(created, { status: 201 });
   } catch (err) {
@@ -120,17 +149,16 @@ export async function DELETE(request: NextRequest) {
     if (!entry) {
       return NextResponse.json({ error: "Introuvable." }, { status: 404 });
     }
-    const day = entry.periodStart.toISOString().slice(0, 10);
-    const dayEnd = entry.periodEnd.toISOString().slice(0, 10);
-    if (day === dayEnd) {
-      const auth = await assertCanEditLockedJournalDay({
-        dateStr: day,
-        actorId,
-        editPassword: body.editPassword,
-      });
-      if (!auth.ok) {
-        return NextResponse.json({ error: auth.error }, { status: auth.status });
-      }
+    const invoiceDay =
+      entry.invoiceDate?.toISOString().slice(0, 10) ??
+      entry.periodStart.toISOString().slice(0, 10);
+    const auth = await assertCanEditLockedJournalDay({
+      dateStr: invoiceDay,
+      actorId,
+      editPassword: body.editPassword,
+    });
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     await deleteFixedExpenseEntry(id);

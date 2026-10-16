@@ -251,6 +251,16 @@ export function PeriodAnalysisPanel({
                 {report.fixedExpenses.map((f) => (
                   <li key={f.id} className="py-2">
                     {f.label} — <strong>{formatCad(f.amountCents)}</strong>
+                    {(f.splitGroupId || f.periodStart !== f.periodEnd) && (
+                      <span className="text-slate-500 text-xs block">
+                        Période comptable : {f.periodStart} → {f.periodEnd}
+                      </span>
+                    )}
+                    {f.splitGroupId && f.invoiceDate && (
+                      <span className="text-slate-500 text-xs block">
+                        Facture du {f.invoiceDate} (répartie)
+                      </span>
+                    )}
                     {f.sourceName && (
                       <span className="text-slate-500"> ({f.sourceName})</span>
                     )}
