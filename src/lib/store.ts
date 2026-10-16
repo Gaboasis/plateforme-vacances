@@ -483,7 +483,14 @@ export const AUDIT_ACTIONS = {
   SICK_LEAVE_DELETED_ADMIN: "sick_leave_deleted_by_admin",
   DAY_OFF_SWAP_DELETED_ADMIN: "day_off_swap_deleted_by_admin",
   EDUCATOR_ARCHIVED: "educator_archived",
+  ACCOUNTING_JOURNAL_LINE_CHANGED: "accounting_journal_line_changed",
+  ACCOUNTING_JOURNAL_DAY_DELETED: "accounting_journal_day_deleted",
 } as const;
+
+export const ACCOUNTING_AUDIT_ACTIONS = [
+  AUDIT_ACTIONS.ACCOUNTING_JOURNAL_LINE_CHANGED,
+  AUDIT_ACTIONS.ACCOUNTING_JOURNAL_DAY_DELETED,
+] as const;
 
 function dayOffSwapToType(row: {
   id: string;

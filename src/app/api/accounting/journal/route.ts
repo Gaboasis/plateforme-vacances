@@ -12,6 +12,11 @@ import {
   type JournalLineInput,
 } from "@/lib/store-accounting";
 import { assertCanEditLockedJournalDay } from "@/lib/verify-journal-day-edit";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
+import {
+  recordAccountingJournalDeleteAudit,
+  recordAccountingJournalSaveAudit,
+} from "@/lib/journal-audit";
 
 export async function GET(request: NextRequest) {
   try {
@@ -90,6 +95,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const lines = Array.isArray(body.lines) ? body.lines : [];
+    const beforeJournal = await getDailyJournal(dateStr);
     const journal = await saveDailyJournal({
       dateStr,
       notes: typeof body.notes === "string" ? body.notes : undefined,
@@ -97,6 +103,20 @@ export async function PUT(request: NextRequest) {
       actorId: actor.id,
       actorName: actor.name,
     });
+
+    try {
+      await recordAccountingJournalSaveAudit({
+        dateStr,
+        before: beforeJournal,
+        after: journal,
+        actorId: actor.id,
+        actorName: actor.name,
+        ip: getClientIp(request) ?? undefined,
+        userAgent: getUserAgent(request) ?? undefined,
+      });
+    } catch (e) {
+      console.error("Audit compta (save):", e);
+    }
 
     return NextResponse.json(journal);
   } catch (err) {
@@ -129,12 +149,28 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Date requise." }, { status: 400 });
     }
 
+    const beforeJournal = await getDailyJournal(dateStr);
     const removed = await deleteDailyJournalForDate(dateStr);
     if (!removed) {
       return NextResponse.json(
         { error: "Aucune journée enregistrée pour cette date." },
         { status: 404 }
       );
+    }
+
+    if (beforeJournal) {
+      try {
+        await recordAccountingJournalDeleteAudit({
+          dateStr,
+          before: beforeJournal,
+          actorId: actor.id,
+          actorName: actor.name,
+          ip: getClientIp(request) ?? undefined,
+          userAgent: getUserAgent(request) ?? undefined,
+        });
+      } catch (e) {
+        console.error("Audit compta (delete):", e);
+      }
     }
 
     return NextResponse.json({ ok: true, date: dateStr });

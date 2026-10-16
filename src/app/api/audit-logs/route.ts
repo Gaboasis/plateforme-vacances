@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AUDIT_ACTIONS, getAuditLogs } from "@/lib/store";
+import {
+  ACCOUNTING_AUDIT_ACTIONS,
+  AUDIT_ACTIONS,
+  getAuditLogs,
+} from "@/lib/store";
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,8 +12,15 @@ export async function GET(request: NextRequest) {
     const loginOnly =
       request.nextUrl.searchParams.get("loginOnly") === "1" ||
       request.nextUrl.searchParams.get("loginOnly") === "true";
+    const accountingOnly =
+      request.nextUrl.searchParams.get("accountingOnly") === "1" ||
+      request.nextUrl.searchParams.get("accountingOnly") === "true";
     const logs = await getAuditLogs(Number.isFinite(limit) ? limit : 300, {
-      actions: loginOnly ? [AUDIT_ACTIONS.USER_LOGIN_SUCCESS] : undefined,
+      actions: loginOnly
+        ? [AUDIT_ACTIONS.USER_LOGIN_SUCCESS]
+        : accountingOnly
+          ? [...ACCOUNTING_AUDIT_ACTIONS]
+          : undefined,
     });
     return NextResponse.json(logs);
   } catch {

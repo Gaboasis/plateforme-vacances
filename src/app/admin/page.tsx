@@ -35,6 +35,11 @@ import { getAllBiWeekRanges } from "@/lib/biweek";
 import { isDemoEducatorId } from "@/lib/demo-educator";
 import { RequestMetaDates } from "@/components/RequestMetaDates";
 import { VacationInitialRequestLabel } from "@/components/VacationInitialRequestLabel";
+import {
+  accountingChangeTypeLabel,
+  parseAccountingAuditDetail,
+} from "@/lib/journal-audit";
+import { AUDIT_ACTIONS } from "@/lib/store";
 
 const defaultRules: Partial<VacationRules> = {
   minQualifiedPresent: 1,
@@ -63,11 +68,15 @@ export default function AdminPage() {
     | "sickness"
     | "dayoff"
     | "audit"
+    | "accountingAudit"
     | "logins"
     | "rules"
     | "educators"
   >("requests");
   const [auditLogs, setAuditLogs] = useState<ActivityAuditLogEntry[]>([]);
+  const [accountingAuditLogs, setAccountingAuditLogs] = useState<
+    ActivityAuditLogEntry[]
+  >([]);
   const [loginLogs, setLoginLogs] = useState<ActivityAuditLogEntry[]>([]);
   const [dayOffSwaps, setDayOffSwaps] = useState<DayOffSwapRequest[]>([]);
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
@@ -126,16 +135,26 @@ export default function AdminPage() {
           setRules(null);
           setEducatorsList([]);
           setAuditLogs([]);
+          setAccountingAuditLogs([]);
           setLoginLogs([]);
           setDayOffSwaps(Array.isArray(swaps) ? swaps : []);
         } else {
-        const [reqsRes, sickRes, rulesRes, eduRes, auditRes, loginRes, swapRes] =
-          await Promise.all([
+        const [
+          reqsRes,
+          sickRes,
+          rulesRes,
+          eduRes,
+          auditRes,
+          accountingAuditRes,
+          loginRes,
+          swapRes,
+        ] = await Promise.all([
           fetch("/api/requests"),
           fetch("/api/sick-leaves"),
           fetch("/api/rules"),
           fetch("/api/educators"),
           fetch("/api/audit-logs"),
+          fetch("/api/audit-logs?accountingOnly=1&limit=500"),
           fetch("/api/audit-logs?loginOnly=1&limit=500"),
           fetch("/api/day-off-swaps?all=1"),
         ]);
@@ -156,6 +175,9 @@ export default function AdminPage() {
         const r = rulesRes.ok ? await rulesRes.json() : null;
         const edu = eduRes.ok ? await eduRes.json() : [];
         const audit = auditRes.ok ? await auditRes.json() : [];
+        const accountingAudit = accountingAuditRes.ok
+          ? await accountingAuditRes.json()
+          : [];
         const logins = loginRes.ok ? await loginRes.json() : [];
         const swaps = swapRes.ok ? await swapRes.json() : [];
         setRequests(reqs);
@@ -174,6 +196,9 @@ export default function AdminPage() {
         );
         setEducatorsList(Array.isArray(edu) ? edu : []);
         setAuditLogs(Array.isArray(audit) ? audit : []);
+        setAccountingAuditLogs(
+          Array.isArray(accountingAudit) ? accountingAudit : []
+        );
         setLoginLogs(Array.isArray(logins) ? logins : []);
         setDayOffSwaps(Array.isArray(swaps) ? swaps : []);
         }
@@ -186,6 +211,7 @@ export default function AdminPage() {
         setRules(null);
         setEducatorsList([]);
         setAuditLogs([]);
+        setAccountingAuditLogs([]);
         setLoginLogs([]);
         setDayOffSwaps([]);
       } finally {
@@ -199,6 +225,7 @@ export default function AdminPage() {
     if (!inboxOnly) return;
     if (
       activeTab === "audit" ||
+      activeTab === "accountingAudit" ||
       activeTab === "logins" ||
       activeTab === "rules" ||
       activeTab === "educators"
@@ -658,6 +685,10 @@ export default function AdminPage() {
         return "Maladie supprimée (admin)";
       case "day_off_swap_deleted_by_admin":
         return "Échange de jour supprimé (admin)";
+      case "accounting_journal_line_changed":
+        return "Comptabilité — ligne modifiée";
+      case "accounting_journal_day_deleted":
+        return "Comptabilité — journée supprimée";
       default:
         return action;
     }
@@ -694,7 +725,10 @@ export default function AdminPage() {
   };
 
   const traceabilityLogs = auditLogs.filter(
-    (row) => row.action !== "user_login_success"
+    (row) =>
+      row.action !== "user_login_success" &&
+      row.action !== AUDIT_ACTIONS.ACCOUNTING_JOURNAL_LINE_CHANGED &&
+      row.action !== AUDIT_ACTIONS.ACCOUNTING_JOURNAL_DAY_DELETED
   );
 
   const shortenUserAgent = (ua?: string | null, max = 72) => {
@@ -882,6 +916,19 @@ export default function AdminPage() {
         >
           <ScrollText className="h-4 w-4" />
           Traçabilité
+        </button>
+        )}
+        {!inboxOnly && (
+        <button
+          onClick={() => setActiveTab("accountingAudit")}
+          className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
+            activeTab === "accountingAudit"
+              ? "border-emerald-600 text-emerald-800"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <Wallet className="h-4 w-4" />
+          Compta — trace ({accountingAuditLogs.length})
         </button>
         )}
         {!inboxOnly && (
@@ -1520,6 +1567,126 @@ export default function AdminPage() {
                       )}
                     </Fragment>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "accountingAudit" && (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Une ligne apparaît ici seulement lorsqu&apos;une journée comptable{" "}
+            <strong>déjà enregistrée</strong> est modifiée, qu&apos;une ligne est
+            ajoutée ou supprimée, ou qu&apos;un admin supprime une journée. La
+            première saisie d&apos;un jour n&apos;est pas listée. Les changements
+            sont comparés avant / après enregistrement.
+          </p>
+          {accountingAuditLogs.length === 0 ? (
+            <div className="card text-center py-16">
+              <Wallet className="mx-auto h-14 w-14 text-slate-300" />
+              <p className="mt-4 text-slate-600">
+                Aucune modification comptable enregistrée pour le moment
+              </p>
+              <p className="mt-2 text-xs text-slate-500 max-w-md mx-auto">
+                L&apos;historique commence à partir du prochain déploiement. Les
+                changements faits avant cette mise à jour ne peuvent pas être
+                reconstitués.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-3 sm:px-4">Date / heure</th>
+                    <th className="px-3 py-3 sm:px-4">Modifié par</th>
+                    <th className="px-3 py-3 sm:px-4">Journée</th>
+                    <th className="px-3 py-3 sm:px-4">Type</th>
+                    <th className="px-3 py-3 sm:px-4">Ligne</th>
+                    <th className="px-3 py-3 sm:px-4 min-w-[200px]">
+                      Avant → Après
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {accountingAuditLogs.map((row) => {
+                    const parsed = parseAccountingAuditDetail(row.detail);
+                    return (
+                      <tr key={row.id} className="align-top hover:bg-slate-50/80">
+                        <td className="px-3 py-3 sm:px-4 text-slate-600 whitespace-nowrap">
+                          {safeFormatDateTime(row.createdAt)}
+                        </td>
+                        <td className="px-3 py-3 sm:px-4 font-medium text-slate-800">
+                          {row.educatorName}
+                        </td>
+                        <td className="px-3 py-3 sm:px-4 whitespace-nowrap text-slate-700">
+                          {parsed?.journalDate
+                            ? safeFormatDate(parsed.journalDate)
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-3 sm:px-4">
+                          {parsed ? (
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                                parsed.changeType === "modified"
+                                  ? "bg-amber-100 text-amber-900"
+                                  : parsed.changeType === "added"
+                                    ? "bg-emerald-100 text-emerald-900"
+                                    : "bg-rose-100 text-rose-900"
+                              }`}
+                            >
+                              {accountingChangeTypeLabel(parsed.changeType)}
+                            </span>
+                          ) : (
+                            auditActionLabel(row.action)
+                          )}
+                        </td>
+                        <td className="px-3 py-3 sm:px-4 text-slate-700 max-w-[220px]">
+                          {parsed?.lineSummary ?? "—"}
+                        </td>
+                        <td className="px-3 py-3 sm:px-4 text-slate-700">
+                          {parsed?.changes && parsed.changes.length > 0 ? (
+                            <ul className="space-y-1.5">
+                              {parsed.changes.map((c) => (
+                                <li key={c.field} className="text-xs sm:text-sm">
+                                  <span className="font-medium text-slate-800">
+                                    {c.fieldLabel} :
+                                  </span>{" "}
+                                  <span className="text-rose-700 line-through decoration-rose-300/80">
+                                    {c.beforeDisplay}
+                                  </span>
+                                  <span className="text-slate-400 mx-1">→</span>
+                                  <span className="text-emerald-800 font-medium">
+                                    {c.afterDisplay}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : parsed?.snapshot ? (
+                            <span className="text-xs text-slate-600">
+                              {parsed.snapshot.hoursWorked != null && (
+                                <>
+                                  Heures : {parsed.snapshot.hoursWorked} h
+                                  {" · "}
+                                </>
+                              )}
+                              {parsed.snapshot.amountCents != null && (
+                                <>
+                                  Montant :{" "}
+                                  {(parsed.snapshot.amountCents / 100).toFixed(2)}{" "}
+                                  $
+                                </>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
