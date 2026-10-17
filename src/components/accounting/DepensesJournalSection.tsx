@@ -56,7 +56,7 @@ function OriginBadge({ kind }: { kind: ExpenseKind }) {
           : "bg-slate-200 text-slate-700"
       }`}
     >
-      {kind === "fixed" ? "Fixe" : "Journal"}
+      {kind === "fixed" ? "Fixe" : "Variable"}
     </span>
   );
 }
@@ -308,7 +308,7 @@ export function DepensesJournalSection({
       <div>
         <h2 className="font-semibold text-lg text-slate-800">Dépenses</h2>
         <p className="text-sm text-slate-600 mt-1">
-          Dépenses fixes (liste Excel) et autres dépenses du journal, saisies à
+          Dépenses <strong>fixes</strong> (liste Excel) et <strong>variables</strong>, saisies à
           la <strong>date de la facture</strong> (jour sélectionné). Répartition
           sur plusieurs mois possible : chaque tranche entre dans l&apos;analyse
           du mois choisi.
@@ -324,7 +324,7 @@ export function DepensesJournalSection({
               checked={expenseKind === "fixed"}
               onChange={() => setExpenseKind("fixed")}
             />
-            Dépense fixe
+            Fixe
           </label>
           <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-primary-400 has-[:checked]:bg-primary-50">
             <input
@@ -333,7 +333,7 @@ export function DepensesJournalSection({
               checked={expenseKind === "journal"}
               onChange={() => setExpenseKind("journal")}
             />
-            Autre dépense (journal)
+            Variable
           </label>
         </div>
 

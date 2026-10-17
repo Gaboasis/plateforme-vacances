@@ -245,7 +245,7 @@ export function PeriodReportDocument({
     expenseDetailSortable.push({
       sortKey: e.journalDate ?? "",
       row: [
-        "Journal",
+        "Variable",
         e.journalDate
           ? format(parseISO(e.journalDate), "d MMM yyyy", { locale: fr })
           : "—",
@@ -459,7 +459,7 @@ export function PeriodReportDocument({
               {showSalaryDetails ? "4 — Dépenses" : "3 — Dépenses"}
             </h2>
             <p className="report-section-hint">
-              Autres dépenses du journal et dépenses fixes (point 5), tranches
+              Dépenses fixes et variables (point 5), tranches
               comptables incluses.
             </p>
             <ReportTable
