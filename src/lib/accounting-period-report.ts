@@ -1,5 +1,10 @@
 import { prisma } from "./db";
 import {
+  indemnityCentsFromGross,
+  normalizeVacationIndemnityPercent,
+} from "./payroll-indemnities";
+import { getEducatorPaySummaries } from "./store-accounting";
+import {
   computeStatutoryHolidayIndemnitiesFromJournals,
   referencePayWindowForHoliday,
   type EducatorHolidayIndemnitySummary,
@@ -128,6 +133,11 @@ export async function buildPeriodReport(options: {
   const holidayDates = parseHolidayDates(options.statutoryHolidayDates);
   const holidaysInPeriod = holidayDates.filter(
     (d) => d >= options.fromStr && d <= options.toStr
+  );
+
+  const paySummaries = await getEducatorPaySummaries();
+  const vacationPercentByEducator = new Map(
+    paySummaries.map((e) => [e.id, e.vacationIndemnityPercent])
   );
 
   const journals = await prisma.dailyJournal.findMany({
@@ -268,7 +278,11 @@ export async function buildPeriodReport(options: {
                 vacationPct: 4 as 4 | 6,
               };
               pay.vacation += line.amountCents;
-              if (line.employerContributionPercent === 6) pay.vacationPct = 6;
+              if (line.employerContributionPercent != null) {
+                pay.vacationPct = normalizeVacationIndemnityPercent(
+                  line.employerContributionPercent
+                );
+              }
               payrollMap.set(line.educatorId, pay);
             }
             break;
@@ -425,18 +439,35 @@ export async function buildPeriodReport(options: {
   const educatorPayroll: EducatorPayrollDetail[] = Array.from(
     payrollMap.entries()
   )
-    .map(([educatorId, p]) => ({
-      educatorId,
-      educatorName: p.name,
-      totalHours: Math.round(p.hours * 100) / 100,
-      totalGrossCents: p.gross,
-      employerCotisationCents: p.cotisation,
-      vacationIndemnityCents: p.vacation,
-      sickLeaveIndemnityCents: p.sick,
-      holidayIndemnityCents: holidayByEducator.get(educatorId) ?? 0,
-      vacationIndemnityPercent: p.vacationPct,
-    }))
+    .map(([educatorId, p]) => {
+      const vacationIndemnityPercent =
+        vacationPercentByEducator.get(educatorId) ??
+        normalizeVacationIndemnityPercent(p.vacationPct);
+      const vacationIndemnityCents = indemnityCentsFromGross(
+        p.gross,
+        vacationIndemnityPercent
+      );
+      return {
+        educatorId,
+        educatorName: p.name,
+        totalHours: Math.round(p.hours * 100) / 100,
+        totalGrossCents: p.gross,
+        employerCotisationCents: p.cotisation,
+        vacationIndemnityCents,
+        sickLeaveIndemnityCents: p.sick,
+        holidayIndemnityCents: holidayByEducator.get(educatorId) ?? 0,
+        vacationIndemnityPercent,
+      };
+    })
     .sort((a, b) => a.educatorName.localeCompare(b.educatorName, "fr"));
+
+  const vacationFromJournalCents = expenses.vacationIndemnityCents;
+  expenses.vacationIndemnityCents = educatorPayroll.reduce(
+    (s, e) => s + e.vacationIndemnityCents,
+    0
+  );
+  expenses.totalCents +=
+    expenses.vacationIndemnityCents - vacationFromJournalCents;
 
   return {
     from: options.fromStr,

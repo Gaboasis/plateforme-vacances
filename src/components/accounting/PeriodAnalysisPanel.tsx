@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 import { BarChart3, RefreshCw, Calendar, FileSpreadsheet } from "lucide-react";
@@ -13,6 +13,43 @@ type Props = {
   /** Détails paie (salaires, cotisations, fériés par employée) — admin seulement. */
   showSalaryDetails?: boolean;
 };
+
+const PERIOD_STORAGE_KEY = "compta-period-analysis-v1";
+
+function holidaysInRange(dates: string[], from: string, to: string): string[] {
+  if (!from || !to) return [];
+  return dates.filter((d) => d >= from && d <= to).sort();
+}
+
+/** Fusionne la liste et la date encore dans le champ (sans cliquer « Ajouter »). */
+function collectHolidayDates(
+  holidayDates: string[],
+  pendingDate: string
+): string[] {
+  const out = [...holidayDates];
+  const pending = pendingDate.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(pending) && !out.includes(pending)) {
+    out.push(pending);
+  }
+  return Array.from(new Set(out)).sort();
+}
+
+function reportMatchesInputs(
+  report: PeriodReport,
+  from: string,
+  to: string,
+  holidayDates: string[],
+  pendingDate: string
+): boolean {
+  if (report.from !== from || report.to !== to) return false;
+  const expected = holidaysInRange(
+    collectHolidayDates(holidayDates, pendingDate),
+    from,
+    to
+  );
+  const actual = [...report.statutoryHolidayDates].sort();
+  return expected.join(",") === actual.join(",");
+}
 
 export function PeriodAnalysisPanel({
   actorId,
@@ -27,6 +64,44 @@ export function PeriodAnalysisPanel({
   const [error, setError] = useState("");
   const [showFullReport, setShowFullReport] = useState(false);
 
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(PERIOD_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        from?: string;
+        to?: string;
+        holidayDates?: string[];
+      };
+      if (saved.from) setFrom(saved.from);
+      if (saved.to) setTo(saved.to);
+      if (Array.isArray(saved.holidayDates)) {
+        setHolidayDates(
+          saved.holidayDates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        PERIOD_STORAGE_KEY,
+        JSON.stringify({ from, to, holidayDates })
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [from, to, holidayDates]);
+
+  const reportStale =
+    report != null &&
+    from &&
+    to &&
+    !reportMatchesInputs(report, from, to, holidayDates, newHolidayDate);
+
   const addHolidayDate = () => {
     const d = newHolidayDate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
@@ -36,14 +111,19 @@ export function PeriodAnalysisPanel({
   };
 
   const loadReport = async () => {
-    if (!actorId || !from || !to) return;
+    if (!actorId || !from || !to) return false;
+    const mergedHolidays = collectHolidayDates(holidayDates, newHolidayDate);
+    if (mergedHolidays.length !== holidayDates.length) {
+      setHolidayDates(mergedHolidays);
+      setNewHolidayDate("");
+    }
     setLoading(true);
     setError("");
     try {
       const q = new URLSearchParams({
         from,
         to,
-        statutoryHolidayDates: holidayDates.join(","),
+        statutoryHolidayDates: mergedHolidays.join(","),
         _actorEducatorId: actorId,
       });
       const res = await fetch(`/api/accounting/period-report?${q}`);
@@ -51,12 +131,22 @@ export function PeriodAnalysisPanel({
       if (!res.ok) throw new Error(data.error || "Erreur");
       setReport(data as PeriodReport);
       setShowFullReport(false);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur");
       setReport(null);
+      return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  const openFullReport = async () => {
+    if (!report || reportStale) {
+      const ok = await loadReport();
+      if (!ok) return;
+    }
+    setShowFullReport(true);
   };
 
   return (
@@ -121,9 +211,15 @@ export function PeriodAnalysisPanel({
               />
             </label>
             <button type="button" className="btn-secondary" onClick={addHolidayDate}>
-              Ajouter
+              Ajouter à la liste
             </button>
           </div>
+          <p className="text-xs text-slate-500">
+            Chaque férié doit être dans la période Du–Au. Si la date est encore
+            dans le champ ci-dessus, elle sera incluse automatiquement lors du{" "}
+            <strong>Calculer</strong> (inutile de cliquer « Ajouter » si vous
+            calculez tout de suite).
+          </p>
           {holidayDates.length > 0 ? (
             <ul className="flex flex-wrap gap-2">
               {holidayDates.map((d) => (
@@ -163,6 +259,14 @@ export function PeriodAnalysisPanel({
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </div>
 
+      {report && reportStale && (
+        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          La période ou les jours fériés ont changé depuis le dernier calcul.
+          Cliquez <strong>Calculer</strong> (ou ouvrez le rapport détaillé — il
+          sera recalculé automatiquement).
+        </p>
+      )}
+
       {report && (
         <>
           <div className="card space-y-3">
@@ -170,7 +274,8 @@ export function PeriodAnalysisPanel({
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() => setShowFullReport(true)}
+                onClick={() => void openFullReport()}
+                disabled={loading}
               >
                 <FileSpreadsheet className="h-4 w-4" />
                 Rapport détaillé (style Excel)
