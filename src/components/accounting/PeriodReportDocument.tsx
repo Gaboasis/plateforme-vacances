@@ -12,6 +12,83 @@ type Props = {
   showSalaryDetails?: boolean;
 };
 
+const REPORT_STYLES = `
+.period-report { color: #0f172a; font-size: 13px; line-height: 1.45; }
+.period-report .report-hero { margin-bottom: 28px; }
+.period-report .report-hero h1 { font-size: 1.35rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.02em; }
+.period-report .report-hero .period { color: #475569; font-size: 15px; margin: 0 0 4px; }
+.period-report .report-hero .meta { color: #94a3b8; font-size: 12px; margin: 0; }
+.period-report .report-section { margin-top: 32px; }
+.period-report .report-section-title {
+  font-size: 13px; font-weight: 700; color: #334155; margin: 0 0 12px;
+  padding-bottom: 8px; border-bottom: 2px solid #e2e8f0;
+  letter-spacing: 0.01em;
+}
+.period-report .report-card-label {
+  font-size: 12px; font-weight: 600; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.period-report .report-card-label.revenue { color: #047857; }
+.period-report .report-card-label.expense { color: #be123c; }
+.period-report .report-summary-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+}
+@media (max-width: 640px) {
+  .period-report .report-summary-grid { grid-template-columns: 1fr; }
+}
+.period-report .report-net {
+  margin-top: 24px; padding: 20px 24px; text-align: center;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0; border-radius: 12px;
+}
+.period-report .report-net .label { font-size: 12px; color: #64748b; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.period-report .report-net .value { font-size: 1.75rem; font-weight: 800; margin: 0; font-variant-numeric: tabular-nums; }
+.period-report .report-net .value.positive { color: #047857; }
+.period-report .report-net .value.negative { color: #be123c; }
+.period-report .report-table-wrap {
+  overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px;
+  background: #fff; -webkit-overflow-scrolling: touch;
+}
+.period-report .report-table {
+  width: 100%; min-width: 100%; border-collapse: collapse; table-layout: auto;
+}
+.period-report .report-table thead th {
+  background: #f8fafc; padding: 10px 14px; text-align: left; vertical-align: bottom;
+  font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: #64748b; border-bottom: 1px solid #e2e8f0; white-space: nowrap;
+}
+.period-report .report-table thead th.num { text-align: right; }
+.period-report .report-table tbody td {
+  padding: 10px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle;
+  color: #1e293b;
+}
+.period-report .report-table tbody tr:last-child td { border-bottom: none; }
+.period-report .report-table tbody tr:nth-child(even) td { background: #fafbfc; }
+.period-report .report-table tbody td.num {
+  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+  font-weight: 500; color: #0f172a;
+}
+.period-report .report-table tbody td.muted { color: #64748b; font-size: 12px; white-space: nowrap; }
+.period-report .report-table tbody td.text { max-width: 220px; word-break: break-word; }
+.period-report .report-table tfoot td {
+  background: #f1f5f9; font-weight: 700; padding: 12px 14px;
+  border-top: 2px solid #e2e8f0; color: #0f172a;
+}
+.period-report .report-table tfoot td.num {
+  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.period-report .report-table--payroll { min-width: 880px; }
+.period-report .report-table--payroll thead th:nth-child(1) { min-width: 100px; }
+.period-report .report-table--payroll thead th.num { min-width: 88px; }
+.period-report .report-table--holiday { min-width: 720px; }
+.period-report .report-table--holiday thead th:nth-child(2) { min-width: 108px; }
+.period-report .report-table--holiday thead th:nth-child(4) { min-width: 200px; }
+.period-report .report-footer { margin-top: 40px; font-size: 11px; color: #94a3b8; }
+@media print {
+  .period-report .report-table-wrap { border: 1px solid #cbd5e1; break-inside: avoid; }
+  .period-report .report-section { break-inside: avoid-page; }
+}
+`;
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -27,19 +104,8 @@ function reportDocumentHtml(report: PeriodReport, bodyInner: string): string {
 <head>
   <meta charset="utf-8" />
   <title>${escapeHtml(title)}</title>
-  <style>
-    body { font-family: system-ui, -apple-system, sans-serif; color: #0f172a; margin: 24px; font-size: 13px; }
-    h1 { font-size: 1.35rem; margin: 0 0 4px; }
-    .meta { color: #64748b; margin-bottom: 24px; }
-    h2 { font-size: 1rem; margin: 28px 0 10px; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
-    th { background: #f1f5f9; font-weight: 600; }
-    td.num, th.num { text-align: right; white-space: nowrap; }
-    tfoot td { font-weight: 700; background: #f8fafc; }
-    .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .net { margin-top: 20px; padding: 16px; background: #f1f5f9; border-radius: 8px; text-align: center; }
-    .net strong { font-size: 1.5rem; }
+  <style>${REPORT_STYLES}
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 24px; }
     @media print { body { margin: 12px; } }
   </style>
 </head>
@@ -49,52 +115,73 @@ ${bodyInner}
 </html>`;
 }
 
+type ColAlign = "left" | "right";
+
 function ReportTable({
   headers,
   rows,
   foot,
+  tableClassName = "",
+  cellClass,
 }: {
-  headers: { label: string; align?: "left" | "right" }[];
+  headers: { label: string; align?: ColAlign }[];
   rows: (string | number)[][];
   foot?: (string | number)[];
+  tableClassName?: string;
+  /** Optional per-column td class (e.g. num, muted, text) */
+  cellClass?: (colIndex: number, rowIndex: number) => string | undefined;
 }) {
+  const defaultCellClass = (j: number): string | undefined => {
+    if (headers[j]?.align === "right") return "num";
+    return undefined;
+  };
+
   return (
-    <table>
-      <thead>
-        <tr>
-          {headers.map((h) => (
-            <th key={h.label} className={h.align === "right" ? "num" : undefined}>
-              {h.label}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, i) => (
-          <tr key={i}>
-            {row.map((cell, j) => (
-              <td
-                key={j}
-                className={headers[j]?.align === "right" ? "num" : undefined}
-              >
-                {cell}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-      {foot && (
-        <tfoot>
+    <div className="report-table-wrap">
+      <table className={`report-table ${tableClassName}`.trim()}>
+        <thead>
           <tr>
-            {foot.map((cell, j) => (
-              <td key={j} className={headers[j]?.align === "right" ? "num" : undefined}>
-                {cell}
-              </td>
+            {headers.map((h) => (
+              <th
+                key={h.label}
+                className={h.align === "right" ? "num" : undefined}
+              >
+                {h.label}
+              </th>
             ))}
           </tr>
-        </tfoot>
-      )}
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i}>
+              {row.map((cell, j) => {
+                const extra =
+                  cellClass?.(j, i) ?? defaultCellClass(j);
+                return (
+                  <td key={j} className={extra}>
+                    {cell}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+        {foot && (
+          <tfoot>
+            <tr>
+              {foot.map((cell, j) => (
+                <td
+                  key={j}
+                  className={headers[j]?.align === "right" ? "num" : undefined}
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
   );
 }
 
@@ -110,15 +197,15 @@ export function PeriodReportDocument({
   const payrollRows =
     payroll.length > 0
       ? payroll.map((e) => [
-    e.educatorName,
-    e.totalHours > 0 ? e.totalHours.toLocaleString("fr-CA") : "—",
-    formatCad(e.totalGrossCents),
-    `${e.vacationIndemnityPercent} %`,
-    formatCad(e.vacationIndemnityCents),
-    formatCad(e.sickLeaveIndemnityCents),
-    formatCad(e.employerCotisationCents),
-    formatCad(e.holidayIndemnityCents),
-  ])
+          e.educatorName,
+          e.totalHours > 0 ? e.totalHours.toLocaleString("fr-CA") : "—",
+          formatCad(e.totalGrossCents),
+          `${e.vacationIndemnityPercent} %`,
+          formatCad(e.vacationIndemnityCents),
+          formatCad(e.sickLeaveIndemnityCents),
+          formatCad(e.employerCotisationCents),
+          formatCad(e.holidayIndemnityCents),
+        ])
       : [["Aucune heure saisie pour cette période", "—", "—", "—", "—", "—", "—", "—"]];
 
   const revenueItems = report.revenueLineItems ?? [];
@@ -212,6 +299,8 @@ export function PeriodReportDocument({
     setTimeout(() => w.print(), 300);
   };
 
+  const netPositive = report.netCents >= 0;
+
   return (
     <div
       className="fixed inset-0 z-[100] flex flex-col bg-slate-900/50"
@@ -238,81 +327,87 @@ export function PeriodReportDocument({
       <div className="flex-1 overflow-y-auto bg-slate-100 p-4 print:bg-white print:p-0">
         <div
           id="period-report-document-body"
-          className="mx-auto max-w-4xl bg-white rounded-xl shadow-sm p-6 sm:p-8 print:shadow-none print:max-w-none"
+          className="period-report mx-auto max-w-5xl bg-white rounded-xl shadow-sm p-6 sm:p-10 print:shadow-none print:max-w-none print:rounded-none"
         >
-          <h1 className="text-xl font-bold text-slate-900">Rapport comptable — Garderie</h1>
-          <p className="text-slate-600 mt-1 meta">{periodLabel}</p>
-          <p className="text-sm text-slate-500">
-            {report.daysWithJournal} jour(s) saisi(s) dans le journal ·{" "}
-            {report.statutoryHolidayDates.length} jour(s) férié(s) comptabilisé(s)
-          </p>
+          <style dangerouslySetInnerHTML={{ __html: REPORT_STYLES }} />
 
-          <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
-            1 — Budget global (synthèse)
-          </h2>
-          <div className="grid sm:grid-cols-2 gap-4 mt-3">
-            <div>
-              <p className="text-sm font-medium text-emerald-800 mb-2">Revenus</p>
-              <ReportTable
-                headers={[
-                  { label: "Poste" },
-                  { label: "Montant", align: "right" },
-                ]}
-                rows={revenueRows}
-                foot={["Total revenus", formatCad(report.revenue.totalCents)]}
-              />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-rose-800 mb-2">Dépenses</p>
-              <ReportTable
-                headers={[
-                  { label: "Poste" },
-                  { label: "Montant", align: "right" },
-                ]}
-                rows={expenseSummaryRows}
-                foot={["Total dépenses", formatCad(report.expenses.totalCents)]}
-              />
-            </div>
-          </div>
-          <div className="net mt-6 rounded-xl bg-slate-100 p-4 text-center">
-            <p className="text-sm text-slate-600">Résultat net</p>
-            <p
-              className={`text-2xl font-bold ${
-                report.netCents >= 0 ? "text-emerald-700" : "text-rose-700"
-              }`}
-            >
-              {formatCad(report.netCents)}
+          <header className="report-hero">
+            <h1>Rapport comptable — Garderie</h1>
+            <p className="period">{periodLabel}</p>
+            <p className="meta">
+              {report.daysWithJournal} jour(s) saisi(s) dans le journal ·{" "}
+              {report.statutoryHolidayDates.length} jour(s) férié(s) comptabilisé(s)
             </p>
-          </div>
+          </header>
 
-          {showSalaryDetails && (
-            <>
-              <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
-                2 — Salaires et charges par employée
-              </h2>
-              <div className="overflow-x-auto mt-3">
+          <section className="report-section">
+            <h2 className="report-section-title">1 — Budget global (synthèse)</h2>
+            <div className="report-summary-grid">
+              <div>
+                <p className="report-card-label revenue">Revenus</p>
                 <ReportTable
                   headers={[
-                    { label: "Employée" },
-                    { label: "Heures", align: "right" },
-                    { label: "Salaire brut", align: "right" },
-                    { label: "Vac." },
-                    { label: "Indem. vacances", align: "right" },
-                    { label: "Maladie 0,8 %", align: "right" },
-                    { label: "Cotis. employeur", align: "right" },
-                    { label: "Fériés", align: "right" },
+                    { label: "Poste" },
+                    { label: "Montant", align: "right" },
                   ]}
-                  rows={payrollRows}
-                  foot={payrollFoot}
+                  rows={revenueRows}
+                  foot={["Total revenus", formatCad(report.revenue.totalCents)]}
+                  cellClass={(j) => (j === 0 ? "text" : j === 1 ? "num" : undefined)}
                 />
               </div>
-            </>
+              <div>
+                <p className="report-card-label expense">Dépenses</p>
+                <ReportTable
+                  headers={[
+                    { label: "Poste" },
+                    { label: "Montant", align: "right" },
+                  ]}
+                  rows={expenseSummaryRows}
+                  foot={["Total dépenses", formatCad(report.expenses.totalCents)]}
+                  cellClass={(j) => (j === 0 ? "text" : j === 1 ? "num" : undefined)}
+                />
+              </div>
+            </div>
+            <div className="report-net">
+              <p className="label">Résultat net</p>
+              <p className={`value ${netPositive ? "positive" : "negative"}`}>
+                {formatCad(report.netCents)}
+              </p>
+            </div>
+          </section>
+
+          {showSalaryDetails && (
+            <section className="report-section">
+              <h2 className="report-section-title">
+                2 — Salaires et charges par employée
+              </h2>
+              <ReportTable
+                tableClassName="report-table--payroll"
+                headers={[
+                  { label: "Employée" },
+                  { label: "Heures", align: "right" },
+                  { label: "Salaire brut", align: "right" },
+                  { label: "Vac.", align: "right" },
+                  { label: "Indem. vacances", align: "right" },
+                  { label: "Maladie 0,8 %", align: "right" },
+                  { label: "Cotis. employeur", align: "right" },
+                  { label: "Fériés", align: "right" },
+                ]}
+                rows={payrollRows}
+                foot={payrollFoot}
+                cellClass={(j) => {
+                  if (j === 0) return "text";
+                  if (j >= 1) return "num";
+                  return undefined;
+                }}
+              />
+            </section>
           )}
 
-          <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
-            {showSalaryDetails ? "3 — Revenus détaillés" : "2 — Revenus détaillés"}
-          </h2>
-          <div className="mt-3">
+          <section className="report-section">
+            <h2 className="report-section-title">
+              {showSalaryDetails ? "3 — Revenus détaillés" : "2 — Revenus détaillés"}
+            </h2>
             <ReportTable
               headers={[
                 { label: "Description" },
@@ -320,13 +415,16 @@ export function PeriodReportDocument({
               ]}
               rows={revenueRows}
               foot={["Total", formatCad(report.revenue.totalCents)]}
+              cellClass={(j) => (j === 0 ? "text" : "num")}
             />
-          </div>
+          </section>
 
-          <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
-            {showSalaryDetails ? "4 — Autres dépenses (journal)" : "3 — Autres dépenses (journal)"}
-          </h2>
-          <div className="mt-3">
+          <section className="report-section">
+            <h2 className="report-section-title">
+              {showSalaryDetails
+                ? "4 — Autres dépenses (journal)"
+                : "3 — Autres dépenses (journal)"}
+            </h2>
             <ReportTable
               headers={[
                 { label: "Date journal" },
@@ -343,13 +441,19 @@ export function PeriodReportDocument({
                 "",
                 "",
               ]}
+              cellClass={(j) => {
+                if (j === 2) return "num";
+                if (j === 0 || j === 3 || j === 4) return "muted";
+                if (j === 1) return "text";
+                return undefined;
+              }}
             />
-          </div>
+          </section>
 
-          <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
-            {showSalaryDetails ? "5 — Dépenses fixes" : "4 — Dépenses fixes"}
-          </h2>
-          <div className="mt-3">
+          <section className="report-section">
+            <h2 className="report-section-title">
+              {showSalaryDetails ? "5 — Dépenses fixes" : "4 — Dépenses fixes"}
+            </h2>
             <ReportTable
               headers={[
                 { label: "Dépense" },
@@ -368,44 +472,56 @@ export function PeriodReportDocument({
                 "",
                 "",
               ]}
+              cellClass={(j) => {
+                if (j === 1) return "num";
+                if (j === 2 || j === 3) return "muted";
+                if (j === 0 || j === 5) return "text";
+                return undefined;
+              }}
             />
-          </div>
+          </section>
 
           {showSalaryDetails && report.holidayIndemnityLines.length > 0 && (
-            <>
-              <h2 className="text-base font-semibold mt-8 border-b border-slate-200 pb-1">
+            <section className="report-section">
+              <h2 className="report-section-title">
                 6 — Détail jours fériés (Québec)
               </h2>
-              <div className="overflow-x-auto mt-3">
-                <ReportTable
-                  headers={[
-                    { label: "Employée" },
-                    { label: "Date férié" },
-                    { label: "Salaire ref. (4 sem.)", align: "right" },
-                    { label: "Période ref." },
-                    { label: "Indemnité", align: "right" },
-                  ]}
-                  rows={report.holidayIndemnityLines.map((h) => [
-                    h.educatorName,
-                    format(parseISO(h.holidayDate), "d MMM yyyy", { locale: fr }),
-                    formatCad(h.referenceGrossCents),
-                    `${h.referenceFrom} → ${h.referenceTo}`,
-                    formatCad(h.indemnityCents),
-                  ])}
-                  foot={[
-                    "Total",
-                    "",
-                    "",
-                    "",
-                    formatCad(report.expenses.statutoryHolidayCents),
-                  ]}
-                />
-              </div>
-            </>
+              <ReportTable
+                tableClassName="report-table--holiday"
+                headers={[
+                  { label: "Employée" },
+                  { label: "Date férié" },
+                  { label: "Salaire ref. (4 sem.)", align: "right" },
+                  { label: "Période ref." },
+                  { label: "Indemnité", align: "right" },
+                ]}
+                rows={report.holidayIndemnityLines.map((h) => [
+                  h.educatorName,
+                  format(parseISO(h.holidayDate), "d MMM yyyy", { locale: fr }),
+                  formatCad(h.referenceGrossCents),
+                  `${h.referenceFrom} → ${h.referenceTo}`,
+                  formatCad(h.indemnityCents),
+                ])}
+                foot={[
+                  "Total",
+                  "",
+                  "",
+                  "",
+                  formatCad(report.expenses.statutoryHolidayCents),
+                ]}
+                cellClass={(j) => {
+                  if (j === 0) return "text";
+                  if (j === 1 || j === 3) return "muted";
+                  if (j === 2 || j === 4) return "num";
+                  return undefined;
+                }}
+              />
+            </section>
           )}
 
-          <p className="text-xs text-slate-400 mt-10">
-            Généré depuis la plateforme — {format(new Date(), "d MMM yyyy HH:mm", { locale: fr })}
+          <p className="report-footer">
+            Généré depuis la plateforme —{" "}
+            {format(new Date(), "d MMM yyyy HH:mm", { locale: fr })}
           </p>
         </div>
       </div>
