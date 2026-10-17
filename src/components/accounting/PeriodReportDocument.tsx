@@ -24,6 +24,9 @@ const REPORT_STYLES = `
   padding-bottom: 8px; border-bottom: 2px solid #e2e8f0;
   letter-spacing: 0.01em;
 }
+.period-report .report-section-hint {
+  font-size: 11px; color: #64748b; margin: -4px 0 12px; line-height: 1.4;
+}
 .period-report .report-card-label {
   font-size: 12px; font-weight: 600; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.06em;
 }
@@ -230,40 +233,72 @@ export function PeriodReportDocument({
       ? revenueItems.map((r) => [r.label, formatCad(r.amountCents)])
       : [["Aucun revenu saisi", "—"]];
 
-  const fixedRows =
-    report.fixedExpenses.length > 0
-      ? report.fixedExpenses.map((f) => [
-          f.label,
-          formatCad(f.amountCents),
-          f.periodStart === f.periodEnd
-            ? f.periodStart
-            : `${f.periodStart} → ${f.periodEnd}`,
-          f.invoiceDate && f.invoiceDate !== f.periodStart
-            ? `${f.invoiceDate}${f.splitGroupId ? " (répartie)" : ""}`
-            : "—",
-          f.sourceName ?? "—",
-          f.note ?? "—",
-        ])
-      : [["—", "—", "—", "—", "—", "Aucune dépense fixe"]];
+  const expenseDetailSortable: { sortKey: string; row: string[] }[] = [];
 
-  const journalExpRows =
-    journalExpItems.length > 0
-      ? journalExpItems.map((e) => [
-          e.journalDate
-            ? format(parseISO(e.journalDate), "d MMM yyyy", { locale: fr })
-            : "—",
-          e.label,
-          formatCad(e.amountCents),
-          e.accountingPeriodStart && e.accountingPeriodEnd
-            ? e.accountingPeriodStart === e.accountingPeriodEnd
-              ? e.accountingPeriodStart
-              : `${e.accountingPeriodStart} → ${e.accountingPeriodEnd}`
-            : "—",
-          e.splitGroupId && e.invoiceDate
-            ? `${e.invoiceDate} (répartie)`
-            : "—",
-        ])
-      : [["—", "Aucune autre dépense au journal", "—", "—", "—"]];
+  for (const e of journalExpItems) {
+    const period =
+      e.accountingPeriodStart && e.accountingPeriodEnd
+        ? e.accountingPeriodStart === e.accountingPeriodEnd
+          ? e.accountingPeriodStart
+          : `${e.accountingPeriodStart} → ${e.accountingPeriodEnd}`
+        : "—";
+    expenseDetailSortable.push({
+      sortKey: e.journalDate ?? "",
+      row: [
+        "Journal",
+        e.journalDate
+          ? format(parseISO(e.journalDate), "d MMM yyyy", { locale: fr })
+          : "—",
+        e.label,
+        formatCad(e.amountCents),
+        period,
+        e.splitGroupId && e.invoiceDate ? `${e.invoiceDate} (répartie)` : "—",
+        "—",
+        "—",
+      ],
+    });
+  }
+
+  for (const f of report.fixedExpenses) {
+    const period =
+      f.periodStart === f.periodEnd
+        ? f.periodStart
+        : `${f.periodStart} → ${f.periodEnd}`;
+    const invoiceCell =
+      f.invoiceDate && f.invoiceDate !== f.periodStart
+        ? `${f.invoiceDate}${f.splitGroupId ? " (répartie)" : ""}`
+        : "—";
+    const dateDisplay = f.invoiceDate
+      ? format(parseISO(f.invoiceDate), "d MMM yyyy", { locale: fr })
+      : f.periodStart;
+    expenseDetailSortable.push({
+      sortKey: f.invoiceDate ?? f.periodStart,
+      row: [
+        "Fixe",
+        dateDisplay,
+        f.label,
+        formatCad(f.amountCents),
+        period,
+        invoiceCell,
+        f.sourceName ?? "—",
+        f.note ?? "—",
+      ],
+    });
+  }
+
+  expenseDetailSortable.sort((a, b) => {
+    const d = a.sortKey.localeCompare(b.sortKey);
+    if (d !== 0) return d;
+    return a.row[2]!.localeCompare(b.row[2]!, "fr");
+  });
+
+  const expenseDetailRows =
+    expenseDetailSortable.length > 0
+      ? expenseDetailSortable.map((x) => x.row)
+      : [["—", "—", "Aucune dépense sur la période", "—", "—", "—", "—", "—"]];
+
+  const expenseDetailTotalCents =
+    report.expenses.otherDailyCents + report.expenses.fixedExpensesCents;
 
   const payrollTotalCents =
     report.expenses.educatorGrossCents +
@@ -421,61 +456,38 @@ export function PeriodReportDocument({
 
           <section className="report-section">
             <h2 className="report-section-title">
-              {showSalaryDetails
-                ? "4 — Autres dépenses (journal)"
-                : "3 — Autres dépenses (journal)"}
+              {showSalaryDetails ? "4 — Dépenses" : "3 — Dépenses"}
             </h2>
+            <p className="report-section-hint">
+              Autres dépenses du journal et dépenses fixes (point 5), tranches
+              comptables incluses.
+            </p>
             <ReportTable
               headers={[
-                { label: "Date journal" },
+                { label: "Origine" },
+                { label: "Date" },
                 { label: "Description" },
-                { label: "Montant ($)", align: "right" },
-                { label: "Période comptable" },
-                { label: "Facture" },
-              ]}
-              rows={journalExpRows}
-              foot={[
-                "Total",
-                "",
-                formatCad(report.expenses.otherDailyCents),
-                "",
-                "",
-              ]}
-              cellClass={(j) => {
-                if (j === 2) return "num";
-                if (j === 0 || j === 3 || j === 4) return "muted";
-                if (j === 1) return "text";
-                return undefined;
-              }}
-            />
-          </section>
-
-          <section className="report-section">
-            <h2 className="report-section-title">
-              {showSalaryDetails ? "5 — Dépenses fixes" : "4 — Dépenses fixes"}
-            </h2>
-            <ReportTable
-              headers={[
-                { label: "Dépense" },
                 { label: "Montant ($)", align: "right" },
                 { label: "Période comptable" },
                 { label: "Facture" },
                 { label: "Responsable" },
                 { label: "Note" },
               ]}
-              rows={fixedRows}
+              rows={expenseDetailRows}
               foot={[
                 "Total",
-                formatCad(report.expenses.fixedExpensesCents),
+                "",
+                "",
+                formatCad(expenseDetailTotalCents),
                 "",
                 "",
                 "",
                 "",
               ]}
               cellClass={(j) => {
-                if (j === 1) return "num";
-                if (j === 2 || j === 3) return "muted";
-                if (j === 0 || j === 5) return "text";
+                if (j === 3) return "num";
+                if (j === 0 || j === 1 || j === 4 || j === 5) return "muted";
+                if (j === 2 || j === 7) return "text";
                 return undefined;
               }}
             />
@@ -484,7 +496,7 @@ export function PeriodReportDocument({
           {showSalaryDetails && report.holidayIndemnityLines.length > 0 && (
             <section className="report-section">
               <h2 className="report-section-title">
-                6 — Détail jours fériés (Québec)
+                5 — Détail jours fériés (Québec)
               </h2>
               <ReportTable
                 tableClassName="report-table--holiday"

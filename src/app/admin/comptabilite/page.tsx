@@ -36,7 +36,7 @@ import {
 import { isFullAdmin } from "@/lib/staff-actor";
 import { canModifyLockedJournalDay } from "@/lib/journal-day-editors";
 import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
-import { FixedExpensesJournalSection } from "@/components/accounting/FixedExpensesJournalSection";
+import { DepensesJournalSection } from "@/components/accounting/DepensesJournalSection";
 import { PresencePdfImportPanel } from "@/components/accounting/PresencePdfImportPanel";
 import type { PresenceParseResult } from "@/lib/parse-presence-pdf";
 import type {
@@ -64,30 +64,8 @@ import {
   indemnityCentsFromGross,
   normalizeVacationIndemnityPercent,
 } from "@/lib/payroll-indemnities";
-import {
-  defaultSplitMonthKeys,
-  formatMonthLabel,
-  isValidMonthKey,
-  monthBounds,
-  monthKeyFromDate,
-  sortMonthKeys,
-  splitAmountCents,
-} from "@/lib/fixed-expense-split";
 
 type DraftLine = Omit<JournalLine, "id"> & { clientId: string };
-
-function monthOptionsAround(anchorDate: string, span = 14): string[] {
-  const base = monthKeyFromDate(anchorDate);
-  const [y, mo] = base.split("-").map(Number);
-  const out: string[] = [];
-  for (let i = -2; i < span; i++) {
-    const d = new Date(y, mo - 1 + i, 1);
-    out.push(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-    );
-  }
-  return out;
-}
 
 function newClientId() {
   return `c-${Math.random().toString(36).slice(2, 11)}`;
@@ -155,12 +133,6 @@ export default function ComptabilitePage() {
   const [hoursDraft, setHoursDraft] = useState<Record<string, string>>({});
   const [otherRevenueLabel, setOtherRevenueLabel] = useState("");
   const [otherRevenueAmount, setOtherRevenueAmount] = useState("");
-  const [otherExpenseLabel, setOtherExpenseLabel] = useState("");
-  const [otherExpenseAmount, setOtherExpenseAmount] = useState("");
-  const [otherExpenseSplitMonths, setOtherExpenseSplitMonths] = useState(false);
-  const [otherExpenseSelectedMonths, setOtherExpenseSelectedMonths] = useState<
-    string[]
-  >(() => defaultSplitMonthKeys(todayIso(), 3));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingDay, setDeletingDay] = useState(false);
@@ -575,71 +547,16 @@ export default function ComptabilitePage() {
     setOtherRevenueAmount("");
   };
 
-  const otherExpenseMonthChoices = useMemo(
-    () => monthOptionsAround(selectedDate),
-    [selectedDate]
+  const otherExpenseLines = useMemo(
+    () => lines.filter((l) => l.category === "expense_other"),
+    [lines]
   );
 
-  useEffect(() => {
-    setOtherExpenseSelectedMonths(defaultSplitMonthKeys(selectedDate, 3));
-  }, [selectedDate]);
+  const appendOtherExpenseLines = useCallback((newLines: DraftLine[]) => {
+    setLines((prev) => [...prev, ...newLines]);
+  }, []);
 
-  const toggleOtherExpenseMonth = (key: string) => {
-    setOtherExpenseSelectedMonths((prev) => {
-      if (prev.includes(key)) {
-        const next = prev.filter((m) => m !== key);
-        return next.length > 0 ? next : prev;
-      }
-      return sortMonthKeys([...prev, key]);
-    });
-  };
-
-  const addOtherExpense = () => {
-    const amount = parseCadInput(otherExpenseAmount);
-    if (amount <= 0) return;
-    const label = otherExpenseLabel.trim() || "Autre dépense";
-    if (otherExpenseSplitMonths && otherExpenseSelectedMonths.length < 2) {
-      return;
-    }
-    if (otherExpenseSplitMonths) {
-      const months = sortMonthKeys(
-        otherExpenseSelectedMonths.filter(isValidMonthKey)
-      );
-      const parts = splitAmountCents(amount, months.length);
-      const splitGroupId = newClientId();
-      const newLines: DraftLine[] = months.map((m, i) => {
-        const bounds = monthBounds(m);
-        return {
-          clientId: newClientId(),
-          kind: "expense",
-          category: "expense_other",
-          label,
-          amountCents: parts[i]!,
-          invoiceDate: selectedDate,
-          accountingPeriodStart: bounds.periodStart,
-          accountingPeriodEnd: bounds.periodEnd,
-          splitGroupId,
-        };
-      });
-      setLines((prev) => [...prev, ...newLines]);
-      setOtherExpenseSplitMonths(false);
-    } else {
-      setLines((prev) => [
-        ...prev,
-        {
-          clientId: newClientId(),
-          kind: "expense",
-          category: "expense_other",
-          label,
-          amountCents: amount,
-        },
-      ]);
-    }
-    setOtherExpenseLabel("");
-    setOtherExpenseAmount("");
-  };
-
-  const removeManualLine = (clientId: string) => {
+  const removeOtherExpenseLine = useCallback((clientId: string) => {
     setLines((prev) => {
       const target = prev.find((l) => l.clientId === clientId);
       if (target?.splitGroupId) {
@@ -647,23 +564,11 @@ export default function ComptabilitePage() {
       }
       return prev.filter((l) => l.clientId !== clientId);
     });
-  };
+  }, []);
 
-  const otherExpenseDisplayGroups = useMemo(() => {
-    const expenses = manualLines.filter((l) => l.kind === "expense");
-    const map = new Map<string, DraftLine[]>();
-    for (const line of expenses) {
-      const key = line.splitGroupId ?? line.clientId;
-      const list = map.get(key) ?? [];
-      list.push(line);
-      map.set(key, list);
-    }
-    return Array.from(map.entries()).map(([key, group]) => ({
-      key,
-      group,
-      total: group.reduce((s, l) => s + l.amountCents, 0),
-    }));
-  }, [manualLines]);
+  const removeManualLine = (clientId: string) => {
+    setLines((prev) => prev.filter((l) => l.clientId !== clientId));
+  };
 
   const verifyEditPassword = async (password: string): Promise<boolean> => {
     if (!actorId) return false;
@@ -1483,152 +1388,16 @@ export default function ComptabilitePage() {
             </div>
           </section>
 
-          <section className="card space-y-4">
-            <h2 className="font-semibold text-lg text-slate-800">Autres dépenses</h2>
-            <p className="text-sm text-slate-600">
-              Comme pour les dépenses fixes, vous pouvez répartir une facture sur
-              plusieurs mois : chaque tranche comptera dans l&apos;analyse du mois
-              choisi (pas seulement la date du journal).
-            </p>
-            <fieldset
-              disabled={journalReadOnly}
-              className="space-y-3 min-w-0 border-0 p-0 m-0"
-            >
-              <div className="flex flex-wrap gap-2 items-end">
-                <label className="text-sm flex-1 min-w-[140px]">
-                  <span className="text-slate-600">Description</span>
-                  <input
-                    className="input-field mt-1"
-                    value={otherExpenseLabel}
-                    onChange={(e) => setOtherExpenseLabel(e.target.value)}
-                    placeholder="Ex. épicerie, fournitures…"
-                  />
-                </label>
-                <label className="text-sm w-32">
-                  <span className="text-slate-600">Montant total ($)</span>
-                  <input
-                    className="input-field mt-1"
-                    inputMode="decimal"
-                    value={otherExpenseAmount}
-                    onChange={(e) => setOtherExpenseAmount(e.target.value)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  disabled={
-                    journalReadOnly ||
-                    !otherExpenseAmount.trim() ||
-                    (otherExpenseSplitMonths &&
-                      otherExpenseSelectedMonths.length < 2)
-                  }
-                  onClick={addOtherExpense}
-                >
-                  <Plus className="h-4 w-4" />
-                  Ajouter
-                </button>
-              </div>
-              <label className="flex items-start gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={otherExpenseSplitMonths}
-                  onChange={(e) => setOtherExpenseSplitMonths(e.target.checked)}
-                />
-                <span>
-                  Répartir sur plusieurs mois (montant divisé entre les mois
-                  cochés)
-                </span>
-              </label>
-              {otherExpenseSplitMonths && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs font-medium text-slate-600 mb-2">
-                    Mois comptables concernés
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {otherExpenseMonthChoices.map((m) => (
-                      <label
-                        key={m}
-                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs cursor-pointer touch-manipulation ${
-                          otherExpenseSelectedMonths.includes(m)
-                            ? "border-primary-400 bg-primary-50 text-primary-900"
-                            : "border-slate-200 bg-white text-slate-600"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="sr-only"
-                          checked={otherExpenseSelectedMonths.includes(m)}
-                          onChange={() => toggleOtherExpenseMonth(m)}
-                        />
-                        {formatMonthLabel(m)}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </fieldset>
-            {otherExpenseDisplayGroups.map(({ key, group, total }) => {
-              const isSplit =
-                group.length > 1 || Boolean(group[0]?.splitGroupId);
-              return (
-                <div
-                  key={key}
-                  className="flex justify-between items-start gap-2 text-sm bg-rose-50/50 rounded-lg px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-slate-800">
-                      {group[0]?.label}
-                      {isSplit ? (
-                        <span className="ml-2 text-xs font-normal text-primary-700">
-                          répartie · {formatCad(total)} au total
-                        </span>
-                      ) : (
-                        <>
-                          {" "}
-                          — <strong>{formatCad(total)}</strong>
-                        </>
-                      )}
-                    </p>
-                    {isSplit && (
-                      <ul className="mt-1 space-y-0.5 text-xs text-slate-600">
-                        {group.map((l) => (
-                          <li key={l.clientId}>
-                            {formatMonthLabel(
-                              (l.accountingPeriodStart ?? selectedDate).slice(
-                                0,
-                                7
-                              )
-                            )}{" "}
-                            : <strong>{formatCad(l.amountCents)}</strong>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className="text-rose-600 p-2 shrink-0"
-                    onClick={() => removeManualLine(group[0]!.clientId)}
-                    title={
-                      isSplit
-                        ? "Supprimer toute la dépense répartie"
-                        : "Supprimer"
-                    }
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              );
-            })}
-          </section>
-
-          <FixedExpensesJournalSection
+          <DepensesJournalSection
             actorId={actorId}
             journalDate={selectedDate}
             onTotalCentsChange={onFixedExpensesTotalChange}
             readOnly={journalReadOnly}
             getEditPassword={getEditPassword}
+            otherExpenseLines={otherExpenseLines}
+            onAppendOtherLines={appendOtherExpenseLines}
+            onRemoveOtherLine={removeOtherExpenseLine}
+            newClientId={newClientId}
           />
 
           <label className="block card !p-4">
