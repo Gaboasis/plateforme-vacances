@@ -8,13 +8,9 @@ import {
   FIXED_EXPENSE_SUGGESTIONS,
 } from "@/lib/fixed-expense-catalog";
 import {
-  defaultSplitMonthKeys,
-  formatMonthLabel,
-  isValidMonthKey,
-  monthBounds,
-  monthKeyFromDate,
-  sortMonthKeys,
-  splitAmountCents,
+  defaultCoverageEnd,
+  isValidDateKey,
+  splitAmountByCoverageDays,
 } from "@/lib/fixed-expense-split";
 import { formatCad, parseCadInput } from "@/lib/money";
 
@@ -34,17 +30,9 @@ type Props = {
   newClientId: () => string;
 };
 
-function monthOptionsAround(anchorDate: string, span = 14): string[] {
-  const base = monthKeyFromDate(anchorDate);
-  const [y, mo] = base.split("-").map(Number);
-  const out: string[] = [];
-  for (let i = -2; i < span; i++) {
-    const d = new Date(y, mo - 1 + i, 1);
-    out.push(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-    );
-  }
-  return out;
+function formatSegmentPeriod(start: string, end: string): string {
+  if (start === end) return start;
+  return `${start} → ${end}`;
 }
 
 function OriginBadge({ kind }: { kind: ExpenseKind }) {
@@ -85,18 +73,33 @@ export function DepensesJournalSection({
   const [sourceName, setSourceName] = useState("");
   const [note, setNote] = useState("");
   const [splitAcrossMonths, setSplitAcrossMonths] = useState(false);
-  const [selectedMonths, setSelectedMonths] = useState<string[]>(() =>
-    defaultSplitMonthKeys(journalDate, 3)
-  );
-
-  const monthChoices = useMemo(
-    () => monthOptionsAround(journalDate),
-    [journalDate]
+  const [coverageStart, setCoverageStart] = useState(journalDate);
+  const [coverageEnd, setCoverageEnd] = useState(() =>
+    defaultCoverageEnd(journalDate)
   );
 
   useEffect(() => {
-    setSelectedMonths(defaultSplitMonthKeys(journalDate, 3));
+    setCoverageStart(journalDate);
+    setCoverageEnd(defaultCoverageEnd(journalDate));
   }, [journalDate]);
+
+  const splitPreview = useMemo(() => {
+    if (!splitAcrossMonths) return [];
+    const cents = parseCadInput(amount);
+    if (cents <= 0 || !isValidDateKey(coverageStart) || !isValidDateKey(coverageEnd)) {
+      return [];
+    }
+    try {
+      return splitAmountByCoverageDays(cents, coverageStart, coverageEnd);
+    } catch {
+      return [];
+    }
+  }, [splitAcrossMonths, amount, coverageStart, coverageEnd]);
+
+  const coverageValid =
+    isValidDateKey(coverageStart) &&
+    isValidDateKey(coverageEnd) &&
+    coverageStart <= coverageEnd;
 
   const resolvedFixedLabel =
     pick === FIXED_EXPENSE_CUSTOM_OPTION ? customLabel.trim() : pick.trim();
@@ -136,16 +139,6 @@ export function DepensesJournalSection({
     onTotalCentsChange?.(fixedTotal + otherTotal);
   }, [fixedTotal, otherTotal, onTotalCentsChange]);
 
-  const toggleMonth = (key: string) => {
-    setSelectedMonths((prev) => {
-      if (prev.includes(key)) {
-        const next = prev.filter((m) => m !== key);
-        return next.length > 0 ? next : prev;
-      }
-      return sortMonthKeys([...prev, key]);
-    });
-  };
-
   const resetForm = () => {
     setAmount("");
     setNote("");
@@ -158,8 +151,8 @@ export function DepensesJournalSection({
 
   const addFixedItem = async () => {
     if (!actorId || !journalDate || !resolvedFixedLabel) return;
-    if (splitAcrossMonths && selectedMonths.length < 2) {
-      setError("Choisissez au moins 2 mois pour une répartition.");
+    if (splitAcrossMonths && !coverageValid) {
+      setError("Indiquez une période de facture valide (début ≤ fin).");
       return;
     }
     setAdding(true);
@@ -177,7 +170,8 @@ export function DepensesJournalSection({
         editPassword: getEditPassword?.(),
       };
       if (splitAcrossMonths) {
-        payload.allocateToMonths = selectedMonths.filter(isValidMonthKey);
+        payload.coverageStart = coverageStart;
+        payload.coverageEnd = coverageEnd;
       }
       const res = await fetch("/api/accounting/fixed-expenses", {
         method: "POST",
@@ -199,29 +193,31 @@ export function DepensesJournalSection({
     const cents = parseCadInput(amount);
     if (cents <= 0) return;
     const label = journalLabel.trim() || "Autre dépense";
-    if (splitAcrossMonths && selectedMonths.length < 2) {
-      setError("Choisissez au moins 2 mois pour une répartition.");
+    if (splitAcrossMonths && !coverageValid) {
+      setError("Indiquez une période de facture valide (début ≤ fin).");
       return;
     }
     setError("");
     if (splitAcrossMonths) {
-      const months = sortMonthKeys(selectedMonths.filter(isValidMonthKey));
-      const parts = splitAmountCents(cents, months.length);
+      let segments;
+      try {
+        segments = splitAmountByCoverageDays(cents, coverageStart, coverageEnd);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Période invalide.");
+        return;
+      }
       const splitGroupId = newClientId();
-      const newLines: OtherExpenseDraftLine[] = months.map((m, i) => {
-        const bounds = monthBounds(m);
-        return {
-          clientId: newClientId(),
-          kind: "expense",
-          category: "expense_other",
-          label,
-          amountCents: parts[i]!,
-          invoiceDate: journalDate,
-          accountingPeriodStart: bounds.periodStart,
-          accountingPeriodEnd: bounds.periodEnd,
-          splitGroupId,
-        };
-      });
+      const newLines: OtherExpenseDraftLine[] = segments.map((s) => ({
+        clientId: newClientId(),
+        kind: "expense",
+        category: "expense_other",
+        label,
+        amountCents: s.amountCents,
+        invoiceDate: journalDate,
+        accountingPeriodStart: s.periodStart,
+        accountingPeriodEnd: s.periodEnd,
+        splitGroupId,
+      }));
       onAppendOtherLines(newLines);
     } else {
       onAppendOtherLines([
@@ -301,7 +297,7 @@ export function DepensesJournalSection({
     (expenseKind === "fixed"
       ? Boolean(resolvedFixedLabel)
       : Boolean(journalLabel.trim() || amount.trim())) &&
-    (!splitAcrossMonths || selectedMonths.length >= 2);
+    (!splitAcrossMonths || (coverageValid && splitPreview.length > 0));
 
   return (
     <section className="card space-y-4">
@@ -310,8 +306,8 @@ export function DepensesJournalSection({
         <p className="text-sm text-slate-600 mt-1">
           Dépenses <strong>fixes</strong> (liste Excel) et <strong>variables</strong>, saisies à
           la <strong>date de la facture</strong> (jour sélectionné). Répartition
-          sur plusieurs mois possible : chaque tranche entre dans l&apos;analyse
-          du mois choisi.
+          sur plusieurs mois possible (prorata des jours entre date début et fin
+          de la facture).
         </p>
       </div>
 
@@ -420,35 +416,52 @@ export function DepensesJournalSection({
             onChange={(e) => setSplitAcrossMonths(e.target.checked)}
           />
           <span>
-            Répartir sur plusieurs mois (montant divisé entre les mois cochés)
+            Répartir sur plusieurs mois (montant au prorata des jours entre début
+            et fin de facture)
           </span>
         </label>
 
         {splitAcrossMonths && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-medium text-slate-600 mb-2">
-              Mois comptables concernés
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {monthChoices.map((m) => (
-                <label
-                  key={m}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs cursor-pointer touch-manipulation ${
-                    selectedMonths.includes(m)
-                      ? "border-primary-400 bg-primary-50 text-primary-900"
-                      : "border-slate-200 bg-white text-slate-600"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={selectedMonths.includes(m)}
-                    onChange={() => toggleMonth(m)}
-                  />
-                  {formatMonthLabel(m)}
-                </label>
-              ))}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="text-sm block">
+                <span className="text-slate-600">Début de la facture</span>
+                <input
+                  type="date"
+                  className="input-field mt-1"
+                  value={coverageStart}
+                  onChange={(e) => setCoverageStart(e.target.value)}
+                />
+              </label>
+              <label className="text-sm block">
+                <span className="text-slate-600">Fin de la facture</span>
+                <input
+                  type="date"
+                  className="input-field mt-1"
+                  value={coverageEnd}
+                  onChange={(e) => setCoverageEnd(e.target.value)}
+                />
+              </label>
             </div>
+            {splitPreview.length > 0 && (
+              <div className="text-xs text-slate-600 space-y-1">
+                <p className="font-medium text-slate-700">Aperçu de la répartition</p>
+                <ul className="space-y-0.5">
+                  {splitPreview.map((s) => (
+                    <li key={`${s.periodStart}-${s.periodEnd}`}>
+                      {formatSegmentPeriod(s.periodStart, s.periodEnd)} —{" "}
+                      <strong>{s.sharePercent} %</strong> ({s.dayCount} j) :{" "}
+                      <strong>{formatCad(s.amountCents)}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {splitAcrossMonths && amount.trim() && coverageValid && splitPreview.length === 0 && (
+              <p className="text-xs text-amber-700">
+                Vérifiez les dates et le montant pour voir l&apos;aperçu.
+              </p>
+            )}
           </div>
         )}
 
@@ -507,7 +520,7 @@ export function DepensesJournalSection({
                         <ul className="mt-1 space-y-0.5 text-xs text-slate-600">
                           {group.map((f) => (
                             <li key={f.id}>
-                              {formatMonthLabel(f.periodStart.slice(0, 7))} :{" "}
+                              {formatSegmentPeriod(f.periodStart, f.periodEnd)} :{" "}
                               <strong>{formatCad(f.amountCents)}</strong>
                             </li>
                           ))}
@@ -562,11 +575,9 @@ export function DepensesJournalSection({
                         <ul className="mt-1 space-y-0.5 text-xs text-slate-600">
                           {group.map((l) => (
                             <li key={l.clientId}>
-                              {formatMonthLabel(
-                                (l.accountingPeriodStart ?? journalDate).slice(
-                                  0,
-                                  7
-                                )
+                              {formatSegmentPeriod(
+                                l.accountingPeriodStart ?? journalDate,
+                                l.accountingPeriodEnd ?? journalDate
                               )}{" "}
                               : <strong>{formatCad(l.amountCents)}</strong>
                             </li>

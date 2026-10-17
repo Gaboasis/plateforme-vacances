@@ -20,6 +20,7 @@ import {
   isValidMonthKey,
   monthBounds,
   sortMonthKeys,
+  splitAmountByCoverageDays,
   splitAmountCents,
 } from "./fixed-expense-split";
 import { randomUUID } from "crypto";
@@ -359,6 +360,65 @@ export async function createFixedExpenseWithMonthSplit(data: {
       periodEnd: bounds.periodEnd,
       label: data.label,
       amountCents: parts[i]!,
+      sourceName: data.sourceName,
+      note: partNote || undefined,
+      invoiceDate: data.invoiceDate,
+      splitGroupId,
+    });
+    created.push(row);
+  }
+  return created;
+}
+
+export async function createFixedExpenseWithCoverageSplit(data: {
+  invoiceDate: string;
+  label: string;
+  amountCents: number;
+  sourceName?: string;
+  note?: string;
+  coverageStart: string;
+  coverageEnd: string;
+}): Promise<FixedExpenseEntry[]> {
+  const segments = splitAmountByCoverageDays(
+    data.amountCents,
+    data.coverageStart,
+    data.coverageEnd
+  );
+  if (segments.length === 0) throw new Error("Période de couverture invalide.");
+
+  const total = Math.max(0, Math.round(data.amountCents));
+  if (total <= 0) throw new Error("Montant invalide.");
+
+  if (segments.length === 1) {
+    const s = segments[0]!;
+    const single = await createFixedExpenseEntry({
+      periodStart: s.periodStart,
+      periodEnd: s.periodEnd,
+      label: data.label,
+      amountCents: s.amountCents,
+      sourceName: data.sourceName,
+      note: data.note,
+      invoiceDate: data.invoiceDate,
+    });
+    return [single];
+  }
+
+  const splitGroupId = randomUUID();
+  const created: FixedExpenseEntry[] = [];
+
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i]!;
+    const partNote = [
+      data.note?.trim(),
+      `Tranche ${i + 1}/${segments.length} — ${s.sharePercent} % (${s.dayCount} j)`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const row = await createFixedExpenseEntry({
+      periodStart: s.periodStart,
+      periodEnd: s.periodEnd,
+      label: data.label,
+      amountCents: s.amountCents,
       sourceName: data.sourceName,
       note: partNote || undefined,
       invoiceDate: data.invoiceDate,

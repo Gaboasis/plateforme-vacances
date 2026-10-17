@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findAccountingActor } from "@/lib/accounting-staff";
+import { isValidDateKey } from "@/lib/fixed-expense-split";
 import {
   createFixedExpenseEntry,
+  createFixedExpenseWithCoverageSplit,
   createFixedExpenseWithMonthSplit,
   deleteFixedExpenseEntry,
   listFixedExpensesForJournalDay,
@@ -53,6 +55,8 @@ export async function POST(request: NextRequest) {
       note?: string;
       invoiceDate?: string;
       allocateToMonths?: string[];
+      coverageStart?: string;
+      coverageEnd?: string;
       _actorEducatorId?: string;
       editPassword?: string;
     };
@@ -92,6 +96,30 @@ export async function POST(request: NextRequest) {
     });
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const coverageStart = body.coverageStart?.trim() ?? "";
+    const coverageEnd = body.coverageEnd?.trim() ?? "";
+
+    if (
+      coverageStart &&
+      coverageEnd &&
+      isValidDateKey(coverageStart) &&
+      isValidDateKey(coverageEnd)
+    ) {
+      const created = await createFixedExpenseWithCoverageSplit({
+        invoiceDate,
+        label,
+        amountCents,
+        sourceName: body.sourceName,
+        note: body.note,
+        coverageStart,
+        coverageEnd,
+      });
+      return NextResponse.json(
+        { items: created, split: created.length > 1 },
+        { status: 201 }
+      );
     }
 
     const months = Array.isArray(body.allocateToMonths)
