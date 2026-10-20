@@ -70,6 +70,9 @@ export interface JournalLine {
   accountingPeriodStart?: string;
   accountingPeriodEnd?: string;
   splitGroupId?: string;
+  /** Dépenses variables — responsable / note (comme dépenses fixes) */
+  sourceName?: string;
+  note?: string;
 }
 
 export interface DailyJournal {

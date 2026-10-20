@@ -45,6 +45,8 @@ export type ReportLineItem = {
   accountingPeriodEnd?: string;
   invoiceDate?: string;
   splitGroupId?: string;
+  sourceName?: string;
+  note?: string;
 };
 
 export type PeriodReport = {
@@ -310,6 +312,8 @@ export async function buildPeriodReport(options: {
               label: line.label?.trim() || "Autre dépense",
               amountCents: line.amountCents,
               journalDate: dayKey,
+              sourceName: line.sourceName ?? undefined,
+              note: line.note ?? undefined,
             });
             break;
           default:
@@ -342,6 +346,8 @@ export async function buildPeriodReport(options: {
       accountingPeriodEnd: line.accountingPeriodEnd!.toISOString().slice(0, 10),
       invoiceDate: line.invoiceDate?.toISOString().slice(0, 10) ?? journalDay,
       splitGroupId: line.splitGroupId ?? undefined,
+      sourceName: line.sourceName ?? undefined,
+      note: line.note ?? undefined,
     });
   }
 

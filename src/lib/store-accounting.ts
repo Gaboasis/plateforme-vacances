@@ -43,6 +43,8 @@ function lineToType(row: {
   accountingPeriodStart: Date | null;
   accountingPeriodEnd: Date | null;
   splitGroupId: string | null;
+  sourceName: string | null;
+  note: string | null;
 }): JournalLine {
   return {
     id: row.id,
@@ -62,6 +64,8 @@ function lineToType(row: {
     accountingPeriodStart: row.accountingPeriodStart?.toISOString().slice(0, 10),
     accountingPeriodEnd: row.accountingPeriodEnd?.toISOString().slice(0, 10),
     splitGroupId: row.splitGroupId ?? undefined,
+    sourceName: row.sourceName ?? undefined,
+    note: row.note ?? undefined,
   };
 }
 
@@ -485,6 +489,8 @@ export async function saveDailyJournal(options: {
         ? parseJournalDate(line.accountingPeriodEnd)
         : null,
       splitGroupId: line.splitGroupId?.trim() || null,
+      sourceName: line.sourceName?.trim() || null,
+      note: line.note?.trim() || null,
     }))
     .filter(
       (l) =>

@@ -90,6 +90,8 @@ model JournalLine {
   accountingPeriodStart       DateTime?    @db.Date
   accountingPeriodEnd         DateTime?    @db.Date
   splitGroupId                String?
+  sourceName                  String?
+  note                        String?      @db.Text
 
   @@index([journalId])
   @@index([category, accountingPeriodStart, accountingPeriodEnd])

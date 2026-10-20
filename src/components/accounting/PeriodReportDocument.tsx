@@ -253,8 +253,8 @@ export function PeriodReportDocument({
         formatCad(e.amountCents),
         period,
         e.splitGroupId && e.invoiceDate ? `${e.invoiceDate} (répartie)` : "—",
-        "—",
-        "—",
+        e.sourceName ?? "—",
+        e.note ?? "—",
       ],
     });
   }

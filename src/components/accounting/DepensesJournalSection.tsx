@@ -68,7 +68,6 @@ export function DepensesJournalSection({
   const [expenseKind, setExpenseKind] = useState<ExpenseKind>("fixed");
   const [pick, setPick] = useState("");
   const [customLabel, setCustomLabel] = useState("");
-  const [journalLabel, setJournalLabel] = useState("");
   const [amount, setAmount] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [note, setNote] = useState("");
@@ -101,7 +100,7 @@ export function DepensesJournalSection({
     isValidDateKey(coverageEnd) &&
     coverageStart <= coverageEnd;
 
-  const resolvedFixedLabel =
+  const resolvedExpenseLabel =
     pick === FIXED_EXPENSE_CUSTOM_OPTION ? customLabel.trim() : pick.trim();
 
   const loadFixedItems = useCallback(async () => {
@@ -143,14 +142,13 @@ export function DepensesJournalSection({
     setAmount("");
     setNote("");
     setCustomLabel("");
-    setJournalLabel("");
     setPick("");
     setSourceName("");
     setSplitAcrossMonths(false);
   };
 
   const addFixedItem = async () => {
-    if (!actorId || !journalDate || !resolvedFixedLabel) return;
+    if (!actorId || !journalDate || !resolvedExpenseLabel) return;
     if (splitAcrossMonths && !coverageValid) {
       setError("Indiquez une période de facture valide (début ≤ fin).");
       return;
@@ -162,7 +160,7 @@ export function DepensesJournalSection({
         periodStart: journalDate,
         periodEnd: journalDate,
         invoiceDate: journalDate,
-        label: resolvedFixedLabel,
+        label: resolvedExpenseLabel,
         amountDollars: amount,
         sourceName,
         note,
@@ -192,7 +190,7 @@ export function DepensesJournalSection({
   const addJournalItem = () => {
     const cents = parseCadInput(amount);
     if (cents <= 0) return;
-    const label = journalLabel.trim() || "Autre dépense";
+    const label = resolvedExpenseLabel || "Autre dépense";
     if (splitAcrossMonths && !coverageValid) {
       setError("Indiquez une période de facture valide (début ≤ fin).");
       return;
@@ -217,6 +215,8 @@ export function DepensesJournalSection({
         accountingPeriodStart: s.periodStart,
         accountingPeriodEnd: s.periodEnd,
         splitGroupId,
+        sourceName: sourceName.trim() || undefined,
+        note: note.trim() || undefined,
       }));
       onAppendOtherLines(newLines);
     } else {
@@ -227,6 +227,8 @@ export function DepensesJournalSection({
           category: "expense_other",
           label,
           amountCents: cents,
+          sourceName: sourceName.trim() || undefined,
+          note: note.trim() || undefined,
         },
       ]);
     }
@@ -294,9 +296,7 @@ export function DepensesJournalSection({
   const canAdd =
     amount.trim() &&
     !adding &&
-    (expenseKind === "fixed"
-      ? Boolean(resolvedFixedLabel)
-      : Boolean(journalLabel.trim() || amount.trim())) &&
+    Boolean(resolvedExpenseLabel) &&
     (!splitAcrossMonths || (coverageValid && splitPreview.length > 0));
 
   return (
@@ -333,58 +333,46 @@ export function DepensesJournalSection({
           </label>
         </div>
 
-        {expenseKind === "fixed" ? (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 items-end">
-            <label className="text-sm block sm:col-span-2">
-              <span className="text-slate-600">Dépense</span>
-              <select
-                className="input-field mt-1"
-                value={pick}
-                onChange={(e) => setPick(e.target.value)}
-              >
-                <option value="">— Choisir dans la liste —</option>
-                {FIXED_EXPENSE_SUGGESTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-                <option value={FIXED_EXPENSE_CUSTOM_OPTION}>
-                  Autre (saisir)…
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 items-end">
+          <label className="text-sm block sm:col-span-2">
+            <span className="text-slate-600">Dépense</span>
+            <select
+              className="input-field mt-1"
+              value={pick}
+              onChange={(e) => setPick(e.target.value)}
+            >
+              <option value="">— Choisir dans la liste —</option>
+              {FIXED_EXPENSE_SUGGESTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
                 </option>
-              </select>
-            </label>
-            {pick === FIXED_EXPENSE_CUSTOM_OPTION && (
-              <label className="text-sm block sm:col-span-2">
-                <span className="text-slate-600">Libellé</span>
-                <input
-                  className="input-field mt-1"
-                  value={customLabel}
-                  onChange={(e) => setCustomLabel(e.target.value)}
-                  placeholder="Description"
-                />
-              </label>
-            )}
-            <label className="text-sm block">
-              <span className="text-slate-600">Responsable</span>
+              ))}
+              <option value={FIXED_EXPENSE_CUSTOM_OPTION}>
+                Autre (saisir)…
+              </option>
+            </select>
+          </label>
+          {pick === FIXED_EXPENSE_CUSTOM_OPTION && (
+            <label className="text-sm block sm:col-span-2">
+              <span className="text-slate-600">Libellé</span>
               <input
                 className="input-field mt-1"
-                placeholder="Ex. Kamar…"
-                value={sourceName}
-                onChange={(e) => setSourceName(e.target.value)}
+                value={customLabel}
+                onChange={(e) => setCustomLabel(e.target.value)}
+                placeholder="Description"
               />
             </label>
-          </div>
-        ) : (
-          <label className="text-sm block max-w-md">
-            <span className="text-slate-600">Description</span>
+          )}
+          <label className="text-sm block sm:col-span-2 lg:col-span-1">
+            <span className="text-slate-600">Responsable</span>
             <input
               className="input-field mt-1"
-              value={journalLabel}
-              onChange={(e) => setJournalLabel(e.target.value)}
-              placeholder="Ex. épicerie, fournitures…"
+              placeholder="Ex. Kamar…"
+              value={sourceName}
+              onChange={(e) => setSourceName(e.target.value)}
             />
           </label>
-        )}
+        </div>
 
         <div className="flex flex-wrap gap-2 items-end">
           <label className="text-sm w-36">
@@ -396,16 +384,14 @@ export function DepensesJournalSection({
               onChange={(e) => setAmount(e.target.value)}
             />
           </label>
-          {expenseKind === "fixed" && (
-            <label className="text-sm flex-1 min-w-[160px]">
-              <span className="text-slate-600">Note</span>
-              <input
-                className="input-field mt-1"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-            </label>
-          )}
+          <label className="text-sm flex-1 min-w-[160px]">
+            <span className="text-slate-600">Note</span>
+            <input
+              className="input-field mt-1"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </label>
         </div>
 
         <label className="flex items-start gap-2 text-sm text-slate-700">
@@ -571,6 +557,11 @@ export function DepensesJournalSection({
                           </>
                         )}
                       </p>
+                      {group[0]?.sourceName && (
+                        <p className="text-slate-500 text-xs mt-0.5">
+                          {group[0].sourceName}
+                        </p>
+                      )}
                       {isSplit && (
                         <ul className="mt-1 space-y-0.5 text-xs text-slate-600">
                           {group.map((l) => (
@@ -584,8 +575,13 @@ export function DepensesJournalSection({
                           ))}
                         </ul>
                       )}
+                      {group[0]?.note && !isSplit && (
+                        <span className="block text-xs text-slate-500 mt-0.5">
+                          {group[0].note}
+                        </span>
+                      )}
                       {!isSplit && (
-                        <span className="text-xs text-slate-500">
+                        <span className="text-xs text-slate-500 block mt-0.5">
                           Enregistrer le journal pour confirmer
                         </span>
                       )}
