@@ -2225,8 +2225,13 @@ export default function AdminPage() {
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                Demandes max. par mois (par personne)
+                Demandes max. par mois (même mois de dépôt et de congés)
               </label>
+              <p className="mb-2 text-xs text-slate-500">
+                Compte seulement les demandes déposées dans un mois pour des vacances
+                qui tombent dans ce même mois. Une autre demande le même mois pour un
+                autre mois de congés reste permise.
+              </p>
               <input
                 type="number"
                 min={1}

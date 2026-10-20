@@ -82,6 +82,18 @@ function projectedAcceptedVacationDaysInYear(
   return mergedVacationDaysInYear(clips);
 }
 
+/** Chevauche le mois calendaire (0 = janvier). */
+function vacationOverlapsCalendarMonth(
+  start: Date,
+  end: Date,
+  year: number,
+  monthIndex: number
+): boolean {
+  const monthStart = new Date(year, monthIndex, 1);
+  const monthEnd = new Date(year, monthIndex + 1, 0);
+  return start <= monthEnd && end >= monthStart;
+}
+
 function acceptedRequestCountForYear(
   educatorId: string,
   vacationYearStart: number,
@@ -159,20 +171,41 @@ export function validateVacationRequest(
     }
   }
 
-  // Nombre de demandes ce mois-ci
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const requestsThisMonth = vacationRequests.filter(
-    (r) =>
-      r.educatorId === request.educatorId &&
-      new Date(r.createdAt) >= monthStart &&
-      r.status !== "rejected" &&
-      r.status !== "cancelled"
+  // Demandes déposées ce mois-ci pour des congés dans le même mois calendaire
+  const requestYear = today.getFullYear();
+  const requestMonth = today.getMonth();
+  const monthStart = new Date(requestYear, requestMonth, 1);
+  const newVacationInSameMonth = vacationOverlapsCalendarMonth(
+    start,
+    end,
+    requestYear,
+    requestMonth
   );
-  if (requestsThisMonth.length >= rules.maxRequestsPerMonth) {
-    return {
-      valid: false,
-      reason: `Vous avez déjà ${rules.maxRequestsPerMonth} demande(s) ce mois-ci.`,
-    };
+  if (newVacationInSameMonth) {
+    const sameMonthVacationRequests = vacationRequests.filter((r) => {
+      if (r.educatorId !== request.educatorId) return false;
+      if (r.status === "rejected" || r.status === "cancelled") return false;
+      const created = new Date(r.createdAt);
+      if (created < monthStart) return false;
+      try {
+        const rs = parseISO(r.startDate);
+        const re = parseISO(r.endDate);
+        return vacationOverlapsCalendarMonth(
+          rs,
+          re,
+          requestYear,
+          requestMonth
+        );
+      } catch {
+        return false;
+      }
+    });
+    if (sameMonthVacationRequests.length >= rules.maxRequestsPerMonth) {
+      return {
+        valid: false,
+        reason: `Vous avez déjà ${rules.maxRequestsPerMonth} demande(s) ce mois-ci pour des congés prévus dans le même mois. Vous pouvez encore déposer une demande ce mois-ci pour un autre mois.`,
+      };
+    }
   }
 
   // Nombre de demandes sur l’année de congés en cours (1 avr → 31 mars)
