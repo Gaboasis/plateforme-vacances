@@ -30,3 +30,17 @@ export function payableHoursFromGrossClock(grossHours: number): number {
 export function payableHoursFromClockTimes(start: string, end: string): number {
   return payableHoursFromGrossClock(grossClockHoursBetweenTimes(start, end));
 }
+
+/** Normalise une saisie ou une heure PDF en HH:MM (24 h). */
+export function normalizeClockTime(value: string | undefined | null): string | undefined {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(raw);
+  if (!m) return undefined;
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) {
+    return undefined;
+  }
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}

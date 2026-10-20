@@ -34,6 +34,8 @@ export interface AccountingConfig {
   qcFssEmployerPercent: number;
   qcCnesstEmployerPercent: number;
   sickLeaveIndemnityPercent: number;
+  /** Solde initial petite caisse (centimes) */
+  pettyCashOpeningBalanceCents?: number;
   updatedAt?: string;
 }
 
@@ -59,6 +61,9 @@ export interface JournalLine {
   educatorId?: string;
   educatorName?: string;
   hoursWorked?: number;
+  /** Punch GAB (HH:MM) — affiché admin seulement */
+  clockIn?: string;
+  clockOut?: string;
   hourlyRateCents?: number;
   employerContributionPercent?: number;
   childCount?: number;
@@ -73,6 +78,19 @@ export interface JournalLine {
   /** Dépenses variables — responsable / note (comme dépenses fixes) */
   sourceName?: string;
   note?: string;
+}
+
+export type PettyCashDirection = "in" | "out";
+
+export interface PettyCashTransaction {
+  id: string;
+  transactionDate: string;
+  direction: PettyCashDirection;
+  amountCents: number;
+  note?: string;
+  createdById: string;
+  createdByName: string;
+  createdAt: string;
 }
 
 export interface DailyJournal {

@@ -6,7 +6,10 @@ import {
   buildEducatorPayrollJournalLines,
   isPayrollJournalCategory,
 } from "./journal-educator-payroll-lines";
-import { payableHoursFromGrossClock } from "./payroll-work-hours";
+import {
+  normalizeClockTime,
+  payableHoursFromGrossClock,
+} from "./payroll-work-hours";
 import { prisma } from "./db";
 import type {
   AccountingConfig,
@@ -34,6 +37,8 @@ function lineToType(row: {
   educatorId: string | null;
   educatorName: string | null;
   hoursWorked: number | null;
+  clockIn: string | null;
+  clockOut: string | null;
   hourlyRateCents: number | null;
   employerContributionPercent: number | null;
   childCount: number | null;
@@ -55,6 +60,8 @@ function lineToType(row: {
     educatorId: row.educatorId ?? undefined,
     educatorName: row.educatorName ?? undefined,
     hoursWorked: row.hoursWorked ?? undefined,
+    clockIn: row.clockIn ?? undefined,
+    clockOut: row.clockOut ?? undefined,
     hourlyRateCents: row.hourlyRateCents ?? undefined,
     employerContributionPercent: row.employerContributionPercent ?? undefined,
     childCount: row.childCount ?? undefined,
@@ -113,6 +120,7 @@ function configFromRow(row: {
   qcFssEmployerPercent: number;
   qcCnesstEmployerPercent: number;
   sickLeaveIndemnityPercent: number;
+  pettyCashOpeningBalanceCents: number;
   updatedAt: Date;
 }): AccountingConfig {
   const method =
@@ -131,6 +139,7 @@ function configFromRow(row: {
     qcFssEmployerPercent: row.qcFssEmployerPercent,
     qcCnesstEmployerPercent: row.qcCnesstEmployerPercent,
     sickLeaveIndemnityPercent: row.sickLeaveIndemnityPercent,
+    pettyCashOpeningBalanceCents: row.pettyCashOpeningBalanceCents,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -151,6 +160,7 @@ export async function ensureAccountingConfig(): Promise<AccountingConfig> {
       qcFssEmployerPercent: 1.65,
       qcCnesstEmployerPercent: 1.15,
       sickLeaveIndemnityPercent: 0.8,
+      pettyCashOpeningBalanceCents: 193_055,
     },
     update: {},
   });
@@ -465,6 +475,27 @@ export async function saveDailyJournal(options: {
   actorName: string;
 }): Promise<DailyJournal> {
   const journalDate = parseJournalDate(options.dateStr);
+  const existing = await prisma.dailyJournal.findUnique({
+    where: { journalDate },
+    include: { lines: true },
+  });
+  const existingClockByEducator = new Map<
+    string,
+    { clockIn: string | null; clockOut: string | null }
+  >();
+  for (const line of existing?.lines ?? []) {
+    if (
+      line.category === "expense_educator_gross" &&
+      line.educatorId &&
+      (line.clockIn || line.clockOut)
+    ) {
+      existingClockByEducator.set(line.educatorId, {
+        clockIn: line.clockIn,
+        clockOut: line.clockOut,
+      });
+    }
+  }
+
   const sanitized = options.lines
     .map((line, index) => ({
       kind: line.kind,
@@ -474,6 +505,28 @@ export async function saveDailyJournal(options: {
       educatorId: line.educatorId?.trim() || null,
       educatorName: line.educatorName?.trim() || null,
       hoursWorked: line.hoursWorked ?? null,
+      clockIn: (() => {
+        const fromInput = normalizeClockTime(line.clockIn) ?? null;
+        if (fromInput) return fromInput;
+        if (
+          line.category === "expense_educator_gross" &&
+          line.educatorId
+        ) {
+          return existingClockByEducator.get(line.educatorId)?.clockIn ?? null;
+        }
+        return null;
+      })(),
+      clockOut: (() => {
+        const fromInput = normalizeClockTime(line.clockOut) ?? null;
+        if (fromInput) return fromInput;
+        if (
+          line.category === "expense_educator_gross" &&
+          line.educatorId
+        ) {
+          return existingClockByEducator.get(line.educatorId)?.clockOut ?? null;
+        }
+        return null;
+      })(),
       hourlyRateCents: line.hourlyRateCents ?? null,
       employerContributionPercent: line.employerContributionPercent ?? null,
       childCount: line.childCount ?? null,
@@ -501,7 +554,6 @@ export async function saveDailyJournal(options: {
     );
 
   const result = await prisma.$transaction(async (tx) => {
-    const existing = await tx.dailyJournal.findUnique({ where: { journalDate } });
     const journal = existing
       ? await tx.dailyJournal.update({
           where: { id: existing.id },

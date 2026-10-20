@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findAccountingActor } from "@/lib/accounting-staff";
+import {
+  canViewComptabiliteSalaryDetails,
+  findAccountingActor,
+} from "@/lib/accounting-staff";
 import { isFullAdmin } from "@/lib/staff-actor";
 import { getEducators } from "@/lib/store";
 import {
@@ -22,9 +25,11 @@ export async function GET(request: NextRequest) {
   try {
     const actorId = request.nextUrl.searchParams.get("_actorEducatorId")?.trim();
     const educators = await getEducators();
-    if (!findAccountingActor(educators, actorId)) {
+    const actor = findAccountingActor(educators, actorId);
+    if (!actor) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
     }
+    const showPunchTimes = canViewComptabiliteSalaryDetails(actor);
 
     const date = request.nextUrl.searchParams.get("date");
     const month = request.nextUrl.searchParams.get("month");
@@ -47,8 +52,16 @@ export async function GET(request: NextRequest) {
       getEducatorPaySummaries(),
     ]);
 
+    const journalPayload =
+      journal && !showPunchTimes
+        ? {
+            ...journal,
+            lines: journal.lines.map(({ clockIn: _in, clockOut: _out, ...line }) => line),
+          }
+        : journal;
+
     return NextResponse.json({
-      journal,
+      journal: journalPayload,
       config,
       payRates,
       date,

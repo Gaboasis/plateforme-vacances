@@ -24,6 +24,7 @@ import {
   Clock,
   Settings2,
   BarChart3,
+  Banknote,
   CalendarDays,
   Lock,
   CheckCircle2,
@@ -36,6 +37,7 @@ import {
 import { isFullAdmin } from "@/lib/staff-actor";
 import { canModifyLockedJournalDay } from "@/lib/journal-day-editors";
 import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
+import { PetiteCaissePanel } from "@/components/accounting/PetiteCaissePanel";
 import { DepensesJournalSection } from "@/components/accounting/DepensesJournalSection";
 import { PresencePdfImportPanel } from "@/components/accounting/PresencePdfImportPanel";
 import type { PresenceParseResult } from "@/lib/parse-presence-pdf";
@@ -64,6 +66,7 @@ import {
   indemnityCentsFromGross,
   normalizeVacationIndemnityPercent,
 } from "@/lib/payroll-indemnities";
+import { normalizeClockTime } from "@/lib/payroll-work-hours";
 
 type DraftLine = Omit<JournalLine, "id"> & { clientId: string };
 
@@ -120,7 +123,9 @@ function enrollmentTotalCents(countStr: string, rateInput: string): number {
 
 export default function ComptabilitePage() {
   const router = useRouter();
-  const [mainView, setMainView] = useState<"journal" | "period">("journal");
+  const [mainView, setMainView] = useState<"journal" | "period" | "petty-cash">(
+    "journal"
+  );
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [config, setConfig] = useState<AccountingConfig | null>(null);
   const [payRates, setPayRates] = useState<EducatorPaySummary[]>([]);
@@ -131,6 +136,9 @@ export default function ComptabilitePage() {
   const [over18Count, setOver18Count] = useState("");
   const [over18RateInput, setOver18RateInput] = useState("");
   const [hoursDraft, setHoursDraft] = useState<Record<string, string>>({});
+  const [clockDraft, setClockDraft] = useState<
+    Record<string, { in: string; out: string }>
+  >({});
   const [otherRevenueLabel, setOtherRevenueLabel] = useState("");
   const [otherRevenueAmount, setOtherRevenueAmount] = useState("");
   const [loading, setLoading] = useState(true);
@@ -296,6 +304,7 @@ export default function ComptabilitePage() {
           setOver18Count("");
         }
         const hours: Record<string, string> = {};
+        const clocks: Record<string, { in: string; out: string }> = {};
         for (const l of journal.lines) {
           if (
             l.category === "expense_educator_gross" &&
@@ -303,15 +312,23 @@ export default function ComptabilitePage() {
             l.hoursWorked != null
           ) {
             hours[l.educatorId] = String(l.hoursWorked);
+            if (l.clockIn || l.clockOut) {
+              clocks[l.educatorId] = {
+                in: l.clockIn ?? "",
+                out: l.clockOut ?? "",
+              };
+            }
           }
         }
         setHoursDraft(hours);
+        setClockDraft(clocks);
       } else {
         setNotes("");
         setLines([]);
         setInfantCount("");
         setOver18Count("");
         setHoursDraft({});
+        setClockDraft({});
       }
 
       const month = date.slice(0, 7);
@@ -342,10 +359,13 @@ export default function ComptabilitePage() {
     const pending = pendingPresenceImportRef.current;
     pendingPresenceImportRef.current = null;
     const next: Record<string, string> = {};
+    const clocks: Record<string, { in: string; out: string }> = {};
     for (const row of pending.rows) {
       next[row.educatorId] = String(row.hours);
+      clocks[row.educatorId] = { in: row.startTime, out: row.endTime };
     }
     setHoursDraft((prev) => ({ ...prev, ...next }));
+    setClockDraft((prev) => ({ ...prev, ...clocks }));
   }, [loading, selectedDate]);
 
   const applyPresenceImport = useCallback(
@@ -365,10 +385,13 @@ export default function ComptabilitePage() {
         return;
       }
       const next: Record<string, string> = {};
+      const clocks: Record<string, { in: string; out: string }> = {};
       for (const row of result.rows) {
         next[row.educatorId] = String(row.hours);
+        clocks[row.educatorId] = { in: row.startTime, out: row.endTime };
       }
       setHoursDraft((prev) => ({ ...prev, ...next }));
+      setClockDraft((prev) => ({ ...prev, ...clocks }));
     },
     [selectedDate]
   );
@@ -398,6 +421,8 @@ export default function ComptabilitePage() {
         cfg,
         edu.employerContributionPercent
       );
+      const clockIn = normalizeClockTime(clockDraft[edu.id]?.in);
+      const clockOut = normalizeClockTime(clockDraft[edu.id]?.out);
       out.push({
         clientId: `pay-gross-${edu.id}`,
         kind: "expense",
@@ -407,6 +432,8 @@ export default function ComptabilitePage() {
         educatorId: edu.id,
         educatorName: edu.name,
         hoursWorked: hours,
+        clockIn,
+        clockOut,
         hourlyRateCents: rate,
         employerContributionPercent: cot.effectivePercent,
       });
@@ -462,7 +489,7 @@ export default function ComptabilitePage() {
       }
     }
     return out;
-  }, [hoursDraft, payRates, config]);
+  }, [hoursDraft, clockDraft, payRates, config]);
 
   const manualLines = useMemo(
     () =>
@@ -800,6 +827,18 @@ export default function ComptabilitePage() {
           <CalendarDays className="h-4 w-4" />
           Journal du jour
         </button>
+        <button
+          type="button"
+          onClick={() => setMainView("petty-cash")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            mainView === "petty-cash"
+              ? "border-primary-500 text-primary-700"
+              : "border-transparent text-slate-500"
+          }`}
+        >
+          <Banknote className="h-4 w-4" />
+          Petite caisse
+        </button>
         {canAccessPeriodAnalysis && (
           <button
             type="button"
@@ -817,8 +856,13 @@ export default function ComptabilitePage() {
       </div>
 
       {canAccessPeriodAnalysis && mainView === "period" && (
-        <PeriodAnalysisPanel actorId={actorId} showSalaryDetails />
+        <PeriodAnalysisPanel
+          actorId={actorId}
+          showSalaryDetails={canViewSalaryDetails}
+        />
       )}
+
+      {mainView === "petty-cash" && <PetiteCaissePanel actorId={actorId} />}
 
       {mainView === "journal" && (
         <>
@@ -1318,7 +1362,7 @@ export default function ComptabilitePage() {
                       key={edu.id}
                       className={`grid gap-2 items-center rounded-xl border border-slate-100 p-3 ${
                         canViewSalaryDetails
-                          ? "sm:grid-cols-[1fr_6rem_1fr]"
+                          ? "sm:grid-cols-[1fr_auto_1fr]"
                           : "sm:grid-cols-[1fr_6rem]"
                       }`}
                     >
@@ -1335,20 +1379,67 @@ export default function ComptabilitePage() {
                             </span>
                           ))}
                       </span>
-                      <input
-                        className="input-field !py-2 !min-h-0 text-center"
-                        type="number"
-                        min={0}
-                        step={0.25}
-                        placeholder="h"
-                        value={hoursDraft[edu.id] ?? ""}
-                        onChange={(e) =>
-                          setHoursDraft((h) => ({
-                            ...h,
-                            [edu.id]: e.target.value,
-                          }))
-                        }
-                      />
+                      <div
+                        className={`flex flex-wrap gap-2 items-center ${
+                          canViewSalaryDetails ? "" : "justify-end"
+                        }`}
+                      >
+                        {canViewSalaryDetails && (
+                          <>
+                            <label className="text-xs text-slate-500">
+                              In
+                              <input
+                                className="input-field !py-2 !min-h-0 !w-[5.5rem] text-center mt-0.5"
+                                type="time"
+                                value={clockDraft[edu.id]?.in ?? ""}
+                                onChange={(e) =>
+                                  setClockDraft((c) => ({
+                                    ...c,
+                                    [edu.id]: {
+                                      in: e.target.value,
+                                      out: c[edu.id]?.out ?? "",
+                                    },
+                                  }))
+                                }
+                              />
+                            </label>
+                            <label className="text-xs text-slate-500">
+                              Out
+                              <input
+                                className="input-field !py-2 !min-h-0 !w-[5.5rem] text-center mt-0.5"
+                                type="time"
+                                value={clockDraft[edu.id]?.out ?? ""}
+                                onChange={(e) =>
+                                  setClockDraft((c) => ({
+                                    ...c,
+                                    [edu.id]: {
+                                      in: c[edu.id]?.in ?? "",
+                                      out: e.target.value,
+                                    },
+                                  }))
+                                }
+                              />
+                            </label>
+                          </>
+                        )}
+                        <label className="text-xs text-slate-500">
+                          {canViewSalaryDetails ? "Heures pay." : "Heures"}
+                          <input
+                            className="input-field !py-2 !min-h-0 !w-[5rem] text-center mt-0.5"
+                            type="number"
+                            min={0}
+                            step={0.25}
+                            placeholder="h"
+                            value={hoursDraft[edu.id] ?? ""}
+                            onChange={(e) =>
+                              setHoursDraft((h) => ({
+                                ...h,
+                                [edu.id]: e.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                      </div>
                       {canViewSalaryDetails && (
                         <span className="text-xs sm:text-sm text-slate-600 block">
                           {gross > 0 && cotResult ? (

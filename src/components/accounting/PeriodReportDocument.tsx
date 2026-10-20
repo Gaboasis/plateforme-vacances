@@ -420,7 +420,7 @@ export function PeriodReportDocument({
                 tableClassName="report-table--payroll"
                 headers={[
                   { label: "Employée" },
-                  { label: "Heures", align: "right" },
+                  { label: "Heures payables", align: "right" },
                   { label: "Salaire brut", align: "right" },
                   { label: "Vac.", align: "right" },
                   { label: "Indem. vacances", align: "right" },
