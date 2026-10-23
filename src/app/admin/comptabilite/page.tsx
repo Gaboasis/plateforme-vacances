@@ -1451,6 +1451,11 @@ export default function ComptabilitePage() {
             {isAdminUser && (
               <ScheduleVariancePanel
                 loading={scheduleDayLoading}
+                journalDateLabel={format(
+                  parseISO(selectedDate),
+                  "EEEE d MMMM yyyy",
+                  { locale: fr }
+                )}
                 scheduleLabel={scheduleWeekLabel ?? undefined}
                 variances={scheduleVariances}
               />

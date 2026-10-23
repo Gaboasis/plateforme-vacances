@@ -6,6 +6,7 @@ import type { ScheduleVariance } from "@/lib/compare-schedule-actual";
 type Props = {
   variances: ScheduleVariance[];
   scheduleLabel?: string;
+  journalDateLabel?: string;
   loading?: boolean;
 };
 
@@ -26,6 +27,7 @@ const SEVERITY: Record<
 export function ScheduleVariancePanel({
   variances,
   scheduleLabel,
+  journalDateLabel,
   loading,
 }: Props) {
   if (loading) {
@@ -58,7 +60,9 @@ export function ScheduleVariancePanel({
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Écart horaire · {scheduleLabel}
+        Écart horaire
+        {journalDateLabel ? ` · ${journalDateLabel}` : ""}
+        {scheduleLabel ? ` · semaine ${scheduleLabel}` : ""}
       </p>
       <ul className="space-y-1.5">
         {variances.map((v, i) => {

@@ -65,6 +65,8 @@ model EmployeeWeeklySchedule {
   periodStart    DateTime @db.Date
   periodEnd      DateTime @db.Date
   sourceFileName String?
+  rawPdfText     String?  @db.Text
+  parserVersion  Int      @default(1)
   uploadedById   String
   uploadedByName String
   createdAt      DateTime @default(now())

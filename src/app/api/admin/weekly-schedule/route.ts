@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
       periodStart: schedule.periodStart,
       periodEnd: schedule.periodEnd,
       sourceFileName: file.name,
+      rawPdfText: text,
       uploadedById: actor.id,
       uploadedByName: actor.name,
       entries: matched.entries,
