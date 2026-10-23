@@ -86,6 +86,20 @@ function skipRestOfScheduleCell(lines: string[], startIdx: number): number {
   return i;
 }
 
+/** Deux cellules « Travail » identiques d’affilée = souvent 2 groupes le même jour (remplaçante). */
+function isDuplicateReplacanteWorkCell(
+  roleLabel: string,
+  previous: ParsedScheduleDay | undefined,
+  day: Omit<ParsedScheduleDay, "dayIndex" | "workDate">
+): boolean {
+  if (!/^Remplaçante$/i.test(roleLabel.trim())) return false;
+  if (!previous || previous.kind !== "work" || day.kind !== "work") return false;
+  return (
+    previous.expectedStart === day.expectedStart &&
+    previous.expectedEnd === day.expectedEnd
+  );
+}
+
 function parseDaySlot(lines: string[], startIdx: number): {
   day: Omit<ParsedScheduleDay, "dayIndex" | "workDate">;
   nextIdx: number;
@@ -191,6 +205,15 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
     for (let d = 0; d < workDates.length; d++) {
       const { day, nextIdx } = parseDaySlot(block, i);
       i = nextIdx;
+      const previous = days[days.length - 1];
+      if (isDuplicateReplacanteWorkCell(roleLabel, previous, day)) {
+        days.push({
+          dayIndex: d,
+          workDate: workDates[d]!,
+          kind: "unknown",
+        });
+        continue;
+      }
       days.push({
         dayIndex: d,
         workDate: workDates[d]!,

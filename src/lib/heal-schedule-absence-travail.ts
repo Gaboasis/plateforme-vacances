@@ -4,6 +4,7 @@ export type ScheduleEntryRow = {
   id: string;
   educatorId: string | null;
   pdfName: string;
+  roleLabel?: string | null;
   workDate: Date;
   kind: string;
   expectedStart: string | null;
@@ -88,6 +89,29 @@ export function isAbsenceTravailMisparseEntry(
   }
 
   if (
+    /^Remplaçante$/i.test(entry.roleLabel?.trim() ?? "") &&
+    entry.kind === "work" &&
+    entry.expectedStart &&
+    entry.expectedEnd
+  ) {
+    const weekDates = weekdayDatesInSchedule(weekEntries);
+    const idx = weekDates.indexOf(dateToIso(entry.workDate));
+    if (idx > 0) {
+      const prevDate = weekDates[idx - 1]!;
+      const prev = weekEntries.find(
+        (e) =>
+          (e.educatorId === entry.educatorId ||
+            e.pdfName === entry.pdfName) &&
+          dateToIso(e.workDate) === prevDate &&
+          e.kind === "work" &&
+          e.expectedStart === entry.expectedStart &&
+          e.expectedEnd === entry.expectedEnd
+      );
+      if (prev) return true;
+    }
+  }
+
+  if (
     isKarimaEntry(entry) &&
     entry.expectedStart === "08:00" &&
     entry.expectedEnd === "16:30"
@@ -121,12 +145,20 @@ export function entryIdsToHealAbsenceTravailMisparse(
   return Array.from(new Set(fixIds));
 }
 
+export function healedKindForMisparseEntry(
+  entry: ScheduleEntryRow,
+  weekEntries: ScheduleEntryRow[]
+): string | null {
+  if (!isAbsenceTravailMisparseEntry(entry, weekEntries)) return null;
+  if (/^Remplaçante$/i.test(entry.roleLabel?.trim() ?? "")) {
+    return "unknown";
+  }
+  return "absence";
+}
+
 export function normalizeScheduleEntryKind(
   entry: ScheduleEntryRow,
   weekEntries: ScheduleEntryRow[]
 ): string {
-  if (isAbsenceTravailMisparseEntry(entry, weekEntries)) {
-    return "absence";
-  }
-  return entry.kind;
+  return healedKindForMisparseEntry(entry, weekEntries) ?? entry.kind;
 }

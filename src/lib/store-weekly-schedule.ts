@@ -1,6 +1,6 @@
 import { prisma } from "./db";
 import {
-  entryIdsToHealAbsenceTravailMisparse,
+  healedKindForMisparseEntry,
   normalizeScheduleEntryKind,
 } from "./heal-schedule-absence-travail";
 import {
@@ -86,17 +86,24 @@ async function persistAbsenceTravailHeal(scheduleId: string): Promise<void> {
   const entries = await prisma.employeeScheduleEntry.findMany({
     where: { scheduleId },
   });
-  const fixIds = entryIdsToHealAbsenceTravailMisparse(entries);
-  if (fixIds.length === 0) return;
+  const toFix = entries.filter(
+    (e) => healedKindForMisparseEntry(e, entries) != null
+  );
+  if (toFix.length === 0) return;
 
-  await prisma.employeeScheduleEntry.updateMany({
-    where: { id: { in: fixIds } },
-    data: {
-      kind: "absence",
-      expectedStart: null,
-      expectedEnd: null,
-    },
-  });
+  await prisma.$transaction(
+    toFix.map((e) => {
+      const kind = healedKindForMisparseEntry(e, entries)!;
+      return prisma.employeeScheduleEntry.update({
+        where: { id: e.id },
+        data: {
+          kind,
+          expectedStart: null,
+          expectedEnd: null,
+        },
+      });
+    })
+  );
 }
 
 async function ensureScheduleUpToDate(scheduleId: string): Promise<void> {
@@ -281,9 +288,8 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
         roleLabel: e.roleLabel ?? undefined,
         kind,
         expectedStart:
-          kind === "absence" ? undefined : e.expectedStart ?? undefined,
-        expectedEnd:
-          kind === "absence" ? undefined : e.expectedEnd ?? undefined,
+          kind === "work" ? e.expectedStart ?? undefined : undefined,
+        expectedEnd: kind === "work" ? e.expectedEnd ?? undefined : undefined,
       };
     }),
   };
