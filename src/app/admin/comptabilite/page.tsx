@@ -25,6 +25,7 @@ import {
   Settings2,
   BarChart3,
   Banknote,
+  CalendarRange,
   CalendarDays,
   Lock,
   CheckCircle2,
@@ -38,6 +39,14 @@ import { isFullAdmin } from "@/lib/staff-actor";
 import { canModifyLockedJournalDay } from "@/lib/journal-day-editors";
 import { PeriodAnalysisPanel } from "@/components/accounting/PeriodAnalysisPanel";
 import { PetiteCaissePanel } from "@/components/accounting/PetiteCaissePanel";
+import { WeeklyScheduleAdminPanel } from "@/components/accounting/WeeklyScheduleAdminPanel";
+import { ScheduleVariancePanel } from "@/components/accounting/ScheduleVariancePanel";
+import {
+  compareScheduleToActual,
+  type ScheduleVariance,
+} from "@/lib/compare-schedule-actual";
+import type { ScheduleEntryForDay } from "@/lib/store-weekly-schedule";
+import type { ScheduleDayKind } from "@/lib/parse-employee-schedule-pdf";
 import { DepensesJournalSection } from "@/components/accounting/DepensesJournalSection";
 import { PresencePdfImportPanel } from "@/components/accounting/PresencePdfImportPanel";
 import type { PresenceParseResult } from "@/lib/parse-presence-pdf";
@@ -123,9 +132,14 @@ function enrollmentTotalCents(countStr: string, rateInput: string): number {
 
 export default function ComptabilitePage() {
   const router = useRouter();
-  const [mainView, setMainView] = useState<"journal" | "period" | "petty-cash">(
-    "journal"
-  );
+  const [mainView, setMainView] = useState<
+    "journal" | "period" | "petty-cash" | "weekly-schedule"
+  >("journal");
+  const [scheduleDayLoading, setScheduleDayLoading] = useState(false);
+  const [scheduleDayEntries, setScheduleDayEntries] = useState<
+    ScheduleEntryForDay[]
+  >([]);
+  const [scheduleWeekLabel, setScheduleWeekLabel] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [config, setConfig] = useState<AccountingConfig | null>(null);
   const [payRates, setPayRates] = useState<EducatorPaySummary[]>([]);
@@ -353,6 +367,98 @@ export default function ComptabilitePage() {
     if (!actorId) return;
     loadDay(selectedDate, actorId);
   }, [selectedDate, loadDay, actorId]);
+
+  useEffect(() => {
+    if (!actorId || mainView !== "journal" || !isAdminUser) {
+      setScheduleWeekLabel(null);
+      setScheduleDayEntries([]);
+      setScheduleDayLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setScheduleDayLoading(true);
+    const q = new URLSearchParams({
+      date: selectedDate,
+      _actorEducatorId: actorId,
+    });
+    fetch(`/api/accounting/weekly-schedule?${q}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.schedule) {
+          setScheduleWeekLabel(
+            `${data.schedule.periodStart} → ${data.schedule.periodEnd}`
+          );
+          setScheduleDayEntries(Array.isArray(data.entries) ? data.entries : []);
+        } else {
+          setScheduleWeekLabel(null);
+          setScheduleDayEntries([]);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setScheduleWeekLabel(null);
+          setScheduleDayEntries([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setScheduleDayLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [actorId, selectedDate, mainView, isAdminUser]);
+
+  const scheduleVariances = useMemo(() => {
+    if (!isAdminUser) return [];
+    const byEducator = new Map<string, ScheduleEntryForDay>();
+    for (const e of scheduleDayEntries) {
+      if (e.educatorId) byEducator.set(e.educatorId, e);
+    }
+
+    const seen = new Set<string>();
+    const out: ScheduleVariance[] = [];
+
+    for (const edu of payRates) {
+      const sched = byEducator.get(edu.id);
+      const raw = hoursDraft[edu.id]?.replace(",", ".") ?? "";
+      const hours = parseFloat(raw);
+      const hasHours = Number.isFinite(hours) && hours > 0;
+      const clockIn = clockDraft[edu.id]?.in;
+      const clockOut = clockDraft[edu.id]?.out;
+      if (!sched && !hasHours && !clockIn && !clockOut) continue;
+
+      seen.add(edu.id);
+      out.push(
+        ...compareScheduleToActual({
+          educatorId: edu.id,
+          educatorName: edu.name,
+          scheduledKind: sched?.kind as ScheduleDayKind | undefined,
+          expectedStart: sched?.expectedStart,
+          expectedEnd: sched?.expectedEnd,
+          actualIn: clockIn,
+          actualOut: clockOut,
+          hoursWorked: hasHours ? hours : undefined,
+        })
+      );
+    }
+
+    for (const entry of scheduleDayEntries) {
+      if (!entry.educatorId || seen.has(entry.educatorId)) continue;
+      if (entry.kind !== "work") continue;
+      out.push(
+        ...compareScheduleToActual({
+          educatorId: entry.educatorId,
+          educatorName: entry.educatorName ?? entry.pdfName,
+          scheduledKind: entry.kind as ScheduleDayKind,
+          expectedStart: entry.expectedStart,
+          expectedEnd: entry.expectedEnd,
+        })
+      );
+    }
+
+    return out;
+  }, [scheduleDayEntries, payRates, hoursDraft, clockDraft, isAdminUser]);
 
   useEffect(() => {
     if (loading || !pendingPresenceImportRef.current) return;
@@ -839,6 +945,20 @@ export default function ComptabilitePage() {
           <Banknote className="h-4 w-4" />
           Petite caisse
         </button>
+        {isAdminUser && (
+          <button
+            type="button"
+            onClick={() => setMainView("weekly-schedule")}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              mainView === "weekly-schedule"
+                ? "border-primary-500 text-primary-700"
+                : "border-transparent text-slate-500"
+            }`}
+          >
+            <CalendarRange className="h-4 w-4" />
+            Horaires
+          </button>
+        )}
         {canAccessPeriodAnalysis && (
           <button
             type="button"
@@ -863,6 +983,10 @@ export default function ComptabilitePage() {
       )}
 
       {mainView === "petty-cash" && <PetiteCaissePanel actorId={actorId} />}
+
+      {mainView === "weekly-schedule" && isAdminUser && (
+        <WeeklyScheduleAdminPanel actorId={actorId} />
+      )}
 
       {mainView === "journal" && (
         <>
@@ -1324,6 +1448,13 @@ export default function ComptabilitePage() {
               readOnly={journalReadOnly}
               onApplyHours={applyPresenceImport}
             />
+            {isAdminUser && (
+              <ScheduleVariancePanel
+                loading={scheduleDayLoading}
+                scheduleLabel={scheduleWeekLabel ?? undefined}
+                variances={scheduleVariances}
+              />
+            )}
             <div className="space-y-2">
               {payRates.length === 0 ? (
                 <p className="text-sm text-slate-500">Aucun profil paie configuré.</p>

@@ -60,6 +60,37 @@ model FixedExpenseEntry {
   @@index([splitGroupId])
 }
 
+model EmployeeWeeklySchedule {
+  id             String   @id @default(cuid())
+  periodStart    DateTime @db.Date
+  periodEnd      DateTime @db.Date
+  sourceFileName String?
+  uploadedById   String
+  uploadedByName String
+  createdAt      DateTime @default(now())
+  entries        EmployeeScheduleEntry[]
+
+  @@unique([periodStart, periodEnd])
+  @@index([periodStart, periodEnd])
+}
+
+model EmployeeScheduleEntry {
+  id            String               @id @default(cuid())
+  scheduleId    String
+  schedule      EmployeeWeeklySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  educatorId    String?
+  pdfName       String
+  roleLabel     String?
+  workDate      DateTime             @db.Date
+  kind          String               // work | absence | vacation | unknown
+  expectedStart String?
+  expectedEnd   String?
+
+  @@index([scheduleId])
+  @@index([educatorId, workDate])
+  @@index([workDate])
+}
+
 model PettyCashTransaction {
   id              String   @id @default(cuid())
   transactionDate DateTime @db.Date
