@@ -1,5 +1,8 @@
 import { prisma } from "./db";
-import { entryIdsToHealAbsenceTravailMisparse } from "./heal-schedule-absence-travail";
+import {
+  entryIdsToHealAbsenceTravailMisparse,
+  normalizeScheduleEntryKind,
+} from "./heal-schedule-absence-travail";
 import {
   matchScheduleToEducators,
   parseEmployeeSchedulePdfText,
@@ -79,46 +82,44 @@ async function refreshScheduleFromRawText(scheduleId: string): Promise<void> {
   });
 }
 
-async function healLegacyScheduleEntries(scheduleId: string): Promise<void> {
+async function persistAbsenceTravailHeal(scheduleId: string): Promise<void> {
   const entries = await prisma.employeeScheduleEntry.findMany({
     where: { scheduleId },
   });
   const fixIds = entryIdsToHealAbsenceTravailMisparse(entries);
-  if (fixIds.length === 0) {
-    await prisma.employeeWeeklySchedule.update({
-      where: { id: scheduleId },
-      data: { parserVersion: SCHEDULE_PARSER_VERSION },
-    });
-    return;
-  }
+  if (fixIds.length === 0) return;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.employeeScheduleEntry.updateMany({
-      where: { id: { in: fixIds } },
-      data: {
-        kind: "absence",
-        expectedStart: null,
-        expectedEnd: null,
-      },
-    });
-    await tx.employeeWeeklySchedule.update({
-      where: { id: scheduleId },
-      data: { parserVersion: SCHEDULE_PARSER_VERSION },
-    });
+  await prisma.employeeScheduleEntry.updateMany({
+    where: { id: { in: fixIds } },
+    data: {
+      kind: "absence",
+      expectedStart: null,
+      expectedEnd: null,
+    },
   });
 }
 
 async function ensureScheduleUpToDate(scheduleId: string): Promise<void> {
-  const row = await prisma.employeeWeeklySchedule.findUnique({
-    where: { id: scheduleId },
-    select: { parserVersion: true, rawPdfText: true },
-  });
-  if (!row || row.parserVersion >= SCHEDULE_PARSER_VERSION) return;
+  try {
+    const row = await prisma.employeeWeeklySchedule.findUnique({
+      where: { id: scheduleId },
+      select: { parserVersion: true, rawPdfText: true },
+    });
+    if (
+      row &&
+      row.parserVersion < SCHEDULE_PARSER_VERSION &&
+      row.rawPdfText?.trim()
+    ) {
+      await refreshScheduleFromRawText(scheduleId);
+    }
+  } catch {
+    /* colonnes schema absentes avant db push */
+  }
 
-  if (row.rawPdfText?.trim()) {
-    await refreshScheduleFromRawText(scheduleId);
-  } else {
-    await healLegacyScheduleEntries(scheduleId);
+  try {
+    await persistAbsenceTravailHeal(scheduleId);
+  } catch {
+    /* correction en base indisponible */
   }
 }
 
@@ -228,10 +229,14 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
 
   await ensureScheduleUpToDate(scheduleRow.id);
 
-  const dayEntries = await prisma.employeeScheduleEntry.findMany({
-    where: { scheduleId: scheduleRow.id, workDate: day },
-    orderBy: { pdfName: "asc" },
+  const weekEntries = await prisma.employeeScheduleEntry.findMany({
+    where: { scheduleId: scheduleRow.id },
   });
+
+  const dayEntries = weekEntries.filter(
+    (e) => dateToIso(e.workDate) === dateStr
+  );
+  dayEntries.sort((a, b) => a.pdfName.localeCompare(b.pdfName));
 
   const educators = await prisma.educator.findMany({
     where: {
@@ -255,16 +260,21 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
       createdAt: scheduleRow.createdAt.toISOString(),
       entryCount: scheduleRow._count.entries,
     },
-    entries: dayEntries.map((e) => ({
-      educatorId: e.educatorId ?? undefined,
-      educatorName: e.educatorId
-        ? nameById.get(e.educatorId) ?? undefined
-        : undefined,
-      pdfName: e.pdfName,
-      roleLabel: e.roleLabel ?? undefined,
-      kind: e.kind,
-      expectedStart: e.expectedStart ?? undefined,
-      expectedEnd: e.expectedEnd ?? undefined,
-    })),
+    entries: dayEntries.map((e) => {
+      const kind = normalizeScheduleEntryKind(e, weekEntries);
+      return {
+        educatorId: e.educatorId ?? undefined,
+        educatorName: e.educatorId
+          ? nameById.get(e.educatorId) ?? undefined
+          : undefined,
+        pdfName: e.pdfName,
+        roleLabel: e.roleLabel ?? undefined,
+        kind,
+        expectedStart:
+          kind === "absence" ? undefined : e.expectedStart ?? undefined,
+        expectedEnd:
+          kind === "absence" ? undefined : e.expectedEnd ?? undefined,
+      };
+    }),
   };
 }
