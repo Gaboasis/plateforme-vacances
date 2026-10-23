@@ -7,6 +7,7 @@ import {
   parseEmployeeSchedulePdfText,
 } from "@/lib/parse-employee-schedule-pdf";
 import {
+  deleteWeeklySchedule,
   listWeeklySchedules,
   replaceWeeklySchedule,
 } from "@/lib/store-weekly-schedule";
@@ -103,6 +104,33 @@ export async function POST(request: NextRequest) {
       unmatchedPdfNames: matched.unmatchedPdfNames,
       workDates: schedule.workDates,
     });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erreur serveur";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const actorId = request.nextUrl.searchParams.get("_actorEducatorId")?.trim();
+    if (!(await requireAdmin(actorId))) {
+      return NextResponse.json({ error: "Réservé à l'administrateur." }, { status: 403 });
+    }
+
+    const scheduleId = request.nextUrl.searchParams.get("id")?.trim();
+    if (!scheduleId) {
+      return NextResponse.json(
+        { error: "Paramètre id requis (horaire à supprimer)." },
+        { status: 400 }
+      );
+    }
+
+    const deleted = await deleteWeeklySchedule(scheduleId);
+    if (!deleted) {
+      return NextResponse.json({ error: "Horaire introuvable." }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur serveur";
     return NextResponse.json({ error: message }, { status: 400 });

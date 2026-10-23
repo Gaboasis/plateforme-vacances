@@ -36,6 +36,23 @@ function isKhiraEntry(e: ScheduleEntryRow): boolean {
   );
 }
 
+function isKarimaEntry(e: ScheduleEntryRow): boolean {
+  return (
+    e.educatorId === "10" ||
+    /bhetouri|karima el/i.test(e.pdfName)
+  );
+}
+
+function karimaWeekEntries(
+  weekEntries: ScheduleEntryRow[]
+): ScheduleEntryRow[] {
+  return weekEntries.filter((e) => isKarimaEntry(e));
+}
+
+function karimaHasAbsence(weekEntries: ScheduleEntryRow[]): boolean {
+  return karimaWeekEntries(weekEntries).some((e) => e.kind === "absence");
+}
+
 /** Affichage / comparaison sans accès à toute la semaine en base. */
 export function isAbsenceTravailMisparseEntry(
   entry: ScheduleEntryRow,
@@ -68,6 +85,25 @@ export function isAbsenceTravailMisparseEntry(
         e.expectedEnd === "17:00"
     );
     return khiraWork917.length >= 4;
+  }
+
+  if (
+    isKarimaEntry(entry) &&
+    entry.expectedStart === "08:00" &&
+    entry.expectedEnd === "16:30"
+  ) {
+    const weekDates = weekdayDatesInSchedule(weekEntries);
+    const thirdDay = weekDates[2];
+    if (!thirdDay || dateToIso(entry.workDate) !== thirdDay) return false;
+    if (karimaHasAbsence(weekEntries)) return false;
+
+    const karimaWork830 = karimaWeekEntries(weekEntries).filter(
+      (e) =>
+        e.kind === "work" &&
+        e.expectedStart === "08:00" &&
+        e.expectedEnd === "16:30"
+    );
+    return karimaWork830.length >= 4;
   }
 
   return false;

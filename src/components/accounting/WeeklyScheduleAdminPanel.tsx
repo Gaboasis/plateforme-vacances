@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CalendarRange, Upload } from "lucide-react";
+import { CalendarRange, Trash2, Upload } from "lucide-react";
 import type { WeeklyScheduleSummary } from "@/lib/store-weekly-schedule";
 
 type Props = {
@@ -14,6 +14,7 @@ export function WeeklyScheduleAdminPanel({ actorId }: Props) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!actorId) return;
@@ -36,6 +37,37 @@ export function WeeklyScheduleAdminPanel({ actorId }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const onDelete = async (scheduleId: string, label: string) => {
+    if (!actorId) return;
+    if (
+      !window.confirm(
+        `Supprimer l'horaire ${label} ? Vous pourrez redéposer le PDF ensuite.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(scheduleId);
+    setError("");
+    setSuccess("");
+    try {
+      const q = new URLSearchParams({
+        _actorEducatorId: actorId,
+        id: scheduleId,
+      });
+      const res = await fetch(`/api/admin/weekly-schedule?${q}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Suppression impossible");
+      setSuccess(`Horaire ${label} supprimé. Vous pouvez importer un nouveau PDF.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const onFile = async (file: File) => {
     if (!actorId) return;
@@ -124,23 +156,40 @@ export function WeeklyScheduleAdminPanel({ actorId }: Props) {
           <p className="text-sm text-slate-500">Aucun horaire importé.</p>
         ) : (
           <ul className="divide-y divide-slate-100 text-sm">
-            {schedules.map((s) => (
-              <li key={s.id} className="py-2 flex flex-wrap justify-between gap-2">
-                <span>
-                  <strong>
-                    {s.periodStart} → {s.periodEnd}
-                  </strong>
-                  {s.sourceFileName && (
-                    <span className="text-slate-500 block text-xs">{s.sourceFileName}</span>
-                  )}
-                </span>
-                <span className="text-slate-500 text-xs text-right">
-                  {s.entryCount} entrées · {s.uploadedByName}
-                  <br />
-                  {new Date(s.createdAt).toLocaleString("fr-CA")}
-                </span>
-              </li>
-            ))}
+            {schedules.map((s) => {
+              const label = `${s.periodStart} → ${s.periodEnd}`;
+              return (
+                <li
+                  key={s.id}
+                  className="py-2 flex flex-wrap justify-between gap-2 items-start"
+                >
+                  <span>
+                    <strong>{label}</strong>
+                    {s.sourceFileName && (
+                      <span className="text-slate-500 block text-xs">
+                        {s.sourceFileName}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex flex-col items-end gap-1">
+                    <span className="text-slate-500 text-xs text-right">
+                      {s.entryCount} entrées · {s.uploadedByName}
+                      <br />
+                      {new Date(s.createdAt).toLocaleString("fr-CA")}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={deletingId === s.id}
+                      onClick={() => void onDelete(s.id, label)}
+                      className="text-xs text-rose-700 hover:text-rose-900 inline-flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deletingId === s.id ? "Suppression…" : "Supprimer"}
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

@@ -190,6 +190,16 @@ export async function replaceWeeklySchedule(options: {
   };
 }
 
+export async function deleteWeeklySchedule(scheduleId: string): Promise<boolean> {
+  const existing = await prisma.employeeWeeklySchedule.findUnique({
+    where: { id: scheduleId },
+    select: { id: true },
+  });
+  if (!existing) return false;
+  await prisma.employeeWeeklySchedule.delete({ where: { id: scheduleId } });
+  return true;
+}
+
 export async function listWeeklySchedules(limit = 12): Promise<WeeklyScheduleSummary[]> {
   const rows = await prisma.employeeWeeklySchedule.findMany({
     orderBy: { periodStart: "desc" },
