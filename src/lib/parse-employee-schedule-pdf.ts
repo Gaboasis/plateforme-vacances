@@ -75,6 +75,17 @@ function parseWorkDates(
   return out.slice(0, 5);
 }
 
+/** Lignes groupe / horaires après AbsenceTravail (absence malgré le libellé horaire). */
+function skipRestOfScheduleCell(lines: string[], startIdx: number): number {
+  let i = startIdx;
+  while (i < lines.length) {
+    const line = lines[i]!.trim();
+    if (/^(Travail|Absence|Vacances|AbsenceTravail)/i.test(line)) break;
+    i++;
+  }
+  return i;
+}
+
 function parseDaySlot(lines: string[], startIdx: number): {
   day: Omit<ParsedScheduleDay, "dayIndex" | "workDate">;
   nextIdx: number;
@@ -95,8 +106,12 @@ function parseDaySlot(lines: string[], startIdx: number): {
     return { day: { kind: "vacation" }, nextIdx: i };
   }
   if (/^AbsenceTravail/i.test(head)) {
-    head = "Travail";
-  } else if (/^Absence/i.test(head)) {
+    return {
+      day: { kind: "absence" },
+      nextIdx: skipRestOfScheduleCell(lines, i),
+    };
+  }
+  if (/^Absence/i.test(head)) {
     return { day: { kind: "absence" }, nextIdx: i };
   }
 
