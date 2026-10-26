@@ -263,7 +263,17 @@ async function main() {
   console.log("Seed terminé ✓");
 }
 
+async function ensurePayrollOnlyEducatorsSeed() {
+  const { ensurePayrollOnlyEducators } = await import(
+    "../src/lib/payroll-only-educators"
+  );
+  await ensurePayrollOnlyEducators();
+  console.log("Profils paie sans connexion synchronisés (ex. Ilhem)");
+}
+
 async function ensureAccountingSeed() {
+  await ensurePayrollOnlyEducatorsSeed();
+
   await prisma.accountingConfig.upsert({
     where: { id: "default" },
     create: {

@@ -66,7 +66,7 @@ function roleAvatarClass(role: string) {
 
 export default function HomePage() {
   const [educators, setEducators] = useState<
-    { id: string; name: string; role: string }[]
+    { id: string; name: string; role: string; canLogin?: boolean }[]
   >(FALLBACK_EDUCATORS);
   const [selectedId, setSelectedId] = useState<string>("");
   const [password, setPassword] = useState("");
@@ -78,9 +78,13 @@ export default function HomePage() {
   useEffect(() => {
     fetch("/api/educators")
       .then((r) => r.json())
-      .then((data) =>
-        setEducators(Array.isArray(data) && data.length > 0 ? data : FALLBACK_EDUCATORS)
-      )
+      .then((data) => {
+        const list =
+          Array.isArray(data) && data.length > 0 ? data : FALLBACK_EDUCATORS;
+        setEducators(
+          list.filter((e: { canLogin?: boolean }) => e.canLogin !== false)
+        );
+      })
       .catch(() => setEducators(FALLBACK_EDUCATORS));
   }, []);
 

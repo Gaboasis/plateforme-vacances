@@ -4,9 +4,11 @@ import { hashPassword } from "@/lib/auth";
 import { isFullAdmin } from "@/lib/staff-actor";
 import type { Educator } from "@/types";
 
-function sanitizeEducator(e: Educator): Omit<Educator, "passwordHash"> {
-  const { passwordHash: _, ...rest } = e;
-  return rest;
+function sanitizeEducator(
+  e: Educator
+): Omit<Educator, "passwordHash"> & { canLogin: boolean } {
+  const { passwordHash, ...rest } = e;
+  return { ...rest, canLogin: Boolean(passwordHash) };
 }
 
 async function requireFullAdmin(body: Record<string, unknown>) {

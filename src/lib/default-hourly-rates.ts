@@ -17,6 +17,7 @@ export const DEFAULT_HOURLY_RATE_CENTS: Record<string, number> = {
   kamar: 2215, // 22,15 $
   nabila: 1800, // 18 $
   shaima: 2300, // 23 $
+  ilhem: 2300, // Ilhem Fathallah — secrétaire 23 $
 };
 
 export const DEFAULT_EMPLOYER_CONTRIBUTION_PERCENT = 18;

@@ -225,6 +225,9 @@ export async function setAccountingConfig(
 }
 
 export async function getEducatorPaySummaries(): Promise<EducatorPaySummary[]> {
+  const { ensurePayrollOnlyEducators } = await import("./payroll-only-educators");
+  await ensurePayrollOnlyEducators();
+
   const config = await ensureAccountingConfig();
   const list = await prisma.educator.findMany({
     where: {

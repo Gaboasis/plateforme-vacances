@@ -160,6 +160,13 @@ export function matchPdfNameToEducator(
     if (khira) return khira;
   }
 
+  if (/fathallah|ilhem/.test(normFull)) {
+    const ilhem =
+      educators.find((e) => e.id === "ilhem") ??
+      educators.find((e) => platformFirstName(e.name) === "ilhem");
+    if (ilhem) return ilhem;
+  }
+
   const tokens = tokensFromPdfName(pdfName);
   if (tokens.length === 0) return null;
 
