@@ -310,15 +310,20 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
               name: nameById.get(e.educatorId) ?? e.pdfName,
             }
           : matchPdfNameToEducator(e.pdfName, educators);
+      const hasTimeRange = Boolean(
+        (e.expectedStart ?? "").trim() && (e.expectedEnd ?? "").trim()
+      );
+      /** « unknown » peut quand même avoir une plage horaire extraite du PDF. */
+      const exposeTimes = kind === "work" || (kind === "unknown" && hasTimeRange);
+
       return {
         educatorId: resolved?.id,
         educatorName: resolved?.name,
         pdfName: e.pdfName,
         roleLabel: e.roleLabel ?? undefined,
         kind,
-        expectedStart:
-          kind === "work" ? e.expectedStart ?? undefined : undefined,
-        expectedEnd: kind === "work" ? e.expectedEnd ?? undefined : undefined,
+        expectedStart: exposeTimes ? e.expectedStart ?? undefined : undefined,
+        expectedEnd: exposeTimes ? e.expectedEnd ?? undefined : undefined,
       };
     }),
   };

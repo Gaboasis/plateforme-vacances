@@ -72,6 +72,42 @@ export function compareScheduleToActual(options: {
     return out;
   }
 
+  const hasExpectedTimes = Boolean(
+    expectedStart?.trim() && expectedEnd?.trim()
+  );
+
+  /** Jour importé mais non classé (priorités PDF) : on compare si une plage existe. */
+  if (scheduledKind === "unknown") {
+    if (!hasWork) {
+      if (hasExpectedTimes) {
+        out.push({
+          educatorId,
+          educatorName,
+          kind: "expected_work_missing",
+          scheduledKind,
+          expectedStart,
+          expectedEnd,
+          message: `Plage probable ${expectedStart}–${expectedEnd} (jour non classé à l’import PDF), aucune heure saisie.`,
+        });
+      }
+      return out;
+    }
+    if (!hasExpectedTimes) {
+      out.push({
+        educatorId,
+        educatorName,
+        kind: "no_schedule",
+        scheduledKind,
+        message:
+          "Heures saisies mais l’horaire du jour n’a pas pu être interprété depuis le PDF (type de journée inconnu).",
+        actualIn,
+        actualOut,
+      });
+      return out;
+    }
+    /* hasWork && hasExpectedTimes → comparaison comme un jour « travail » (ci‑dessous). */
+  }
+
   if (scheduledKind === "absence" && hasWork) {
     out.push({
       educatorId,
@@ -96,7 +132,11 @@ export function compareScheduleToActual(options: {
     });
   }
 
-  if (scheduledKind === "work") {
+  const compareAsWorkDay =
+    scheduledKind === "work" ||
+    (scheduledKind === "unknown" && hasWork && hasExpectedTimes);
+
+  if (compareAsWorkDay) {
     if (!hasWork) {
       out.push({
         educatorId,

@@ -445,7 +445,7 @@ export default function ComptabilitePage() {
 
     for (const entry of scheduleDayEntries) {
       if (!entry.educatorId || seen.has(entry.educatorId)) continue;
-      if (entry.kind !== "work") continue;
+      if (entry.kind !== "work" && entry.kind !== "unknown") continue;
       out.push(
         ...compareScheduleToActual({
           educatorId: entry.educatorId,
