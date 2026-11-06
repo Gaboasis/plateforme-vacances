@@ -40,6 +40,7 @@ const PDF_NAME_ALIASES: Record<string, string> = {
   zoukaa: "zooka",
   chaima: "shaima",
   shaima: "shaima",
+  shaimaa: "shaima",
 };
 
 function normalizeToken(s: string): string {
@@ -165,6 +166,13 @@ export function matchPdfNameToEducator(
       educators.find((e) => e.id === "ilhem") ??
       educators.find((e) => platformFirstName(e.name) === "ilhem");
     if (ilhem) return ilhem;
+  }
+
+  if (/shaimaa|mohamed hosny|hosny shaimaa/.test(normFull)) {
+    const shaima =
+      educators.find((e) => e.id === "shaima") ??
+      educators.find((e) => platformFirstName(e.name) === "shaima");
+    if (shaima) return shaima;
   }
 
   const tokens = tokensFromPdfName(pdfName);

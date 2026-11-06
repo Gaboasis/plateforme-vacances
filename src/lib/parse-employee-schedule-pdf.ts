@@ -81,10 +81,96 @@ function normalizeSchedulePdfBodyLines(rawLines: string[]): string[] {
   return out;
 }
 
+/** pdf-parse colle parfois « Absence » et « AbsenceTravail » sur une ligne (2e page / césure). */
+function splitGluedDayHeadLines(lines: string[]): string[] {
+  const out: string[] = [];
+  for (const line of lines) {
+    const t = line.trim();
+    const compact = t.replace(/\s+/g, "");
+    if (/^absenceabsencetravail$/i.test(compact)) {
+      out.push("Absence");
+      out.push("AbsenceTravail");
+      continue;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+/**
+ * Bloc « Mohamed Hosny Shaimaa » : la ligne de rôle manque après césure 2ᵉ page.
+ * Insérer **une seule fois** avant le 1er jour (ligne « Absence » ou « Travail »), sans polluer les blocs suivants.
+ */
+function injectShaimaMissingRoleLine(lines: string[]): string[] {
+  const out = [...lines];
+  const dayHead = /^(Travail|Absence|Vacances|AbsenceTravail)\b/i;
+  for (let i = 0; i < out.length; i++) {
+    const line = out[i]!.trim();
+    if (!dayHead.test(line)) continue;
+    if (ROLE_LINE.test(out[i - 1]!)) continue;
+
+    let sawShaimaContext = false;
+    for (let b = 1; b <= 5 && i - b >= 0; b++) {
+      const prev = out[i - b]!;
+      if (ROLE_LINE.test(prev)) break;
+      if (/shaimaa|mohamed hosny|horaire de/i.test(prev)) {
+        sawShaimaContext = true;
+        break;
+      }
+    }
+    if (!sawShaimaContext) continue;
+
+    out.splice(i, 0, "Éducatrice qualifiée");
+    return out;
+  }
+  return out;
+}
+
 const TIME_RANGE_RE = /(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/;
 
+/** Parenthèses sur 1 ou plusieurs lignes (ex. « (Souhir \n Romdhane ) »). */
+function extractSubstituteNamesFromDayLines(dayLines: string[]): string[] {
+  const blob = dayLines.join("\n");
+  const out: string[] = [];
+  let pos = 0;
+  while (pos < blob.length) {
+    const open = blob.indexOf("(", pos);
+    if (open < 0) break;
+    let depth = 0;
+    let j = open;
+    for (; j < blob.length; j++) {
+      const ch = blob[j]!;
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) {
+          j++;
+          break;
+        }
+      }
+    }
+    if (depth !== 0) {
+      pos = open + 1;
+      continue;
+    }
+    const inner = blob
+      .slice(open + 1, j - 1)
+      .replace(/\s+/g, " ")
+      .trim();
+    const ascii = normAscii(inner).replace(/[^a-z0-9\s'.-]/g, " ").replace(/\s+/g, " ").trim();
+    if (ascii.length >= 3 && /^[a-z0-9\s'.-]+$/i.test(ascii)) {
+      const parts = inner.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) {
+        out.push(inner);
+      }
+    }
+    pos = j;
+  }
+  return Array.from(new Set(out));
+}
+
 const PERIOD_RE =
-  /Période du (\d{4}-\d{2}-\d{2}) au (\d{4}-\d{2}-\d{2})/i;
+  /Période du (\d{4}-\d{2}-\d{2}) au (\d{4}-\d{2}-\d{2})/gi;
 
 const DAY_HEADER_RE =
   /Lundi le (\d{1,2}).*?Mardi le (\d{1,2}).*?Mercredi le (\d{1,2}).*?Jeudi le (\d{1,2}).*?Vendredi le (\d{1,2})/i;
@@ -141,6 +227,7 @@ function isScheduleEmployeeNameLine(line: string): boolean {
   if (/\d+\s*[-–]\s*\d+/.test(t)) return false;
   if (/\b(mois|ans)\b/i.test(t)) return false;
   if (/^\d/.test(t)) return false;
+  if (/^horaire de\b/i.test(t)) return false;
   return true;
 }
 
@@ -172,30 +259,34 @@ function isDuplicateReplacanteWorkCell(
 function parseDaySlot(lines: string[], startIdx: number): {
   day: Omit<ParsedScheduleDay, "dayIndex" | "workDate">;
   nextIdx: number;
+  embeddedSubstituteNames: string[];
 } {
   let i = startIdx;
   let kind: ScheduleDayKind = "unknown";
   let expectedStart: string | undefined;
   let expectedEnd: string | undefined;
+  const embeddedSubstituteNames: string[] = [];
 
   if (i >= lines.length) {
-    return { day: { kind }, nextIdx: i };
+    return { day: { kind }, nextIdx: i, embeddedSubstituteNames };
   }
 
+  const cellStart = i;
   let head = lines[i]!.trim();
   i++;
 
   if (/^Vacances/i.test(head)) {
-    return { day: { kind: "vacation" }, nextIdx: i };
+    return { day: { kind: "vacation" }, nextIdx: i, embeddedSubstituteNames };
   }
   if (/^AbsenceTravail/i.test(head)) {
     return {
       day: { kind: "absence" },
       nextIdx: skipRestOfScheduleCell(lines, i),
+      embeddedSubstituteNames,
     };
   }
   if (/^Absence/i.test(head)) {
-    return { day: { kind: "absence" }, nextIdx: i };
+    return { day: { kind: "absence" }, nextIdx: i, embeddedSubstituteNames };
   }
 
   if (/^Travail/i.test(head)) {
@@ -221,10 +312,118 @@ function parseDaySlot(lines: string[], startIdx: number): {
       if (/^Travail|^Absence|^Vacances/.test(line)) break;
       i++;
     }
-    return { day: { kind, expectedStart, expectedEnd }, nextIdx: i };
+    const daySlice = lines.slice(cellStart, i);
+    embeddedSubstituteNames.push(...extractSubstituteNamesFromDayLines(daySlice));
+    return {
+      day: { kind, expectedStart, expectedEnd },
+      nextIdx: i,
+      embeddedSubstituteNames,
+    };
   }
 
-  return { day: { kind }, nextIdx: i };
+  return { day: { kind }, nextIdx: i, embeddedSubstituteNames };
+}
+
+/** Après un saut de page, le PDF répète « Période du… » puis la suite des employés (ex. Souhir). */
+function buildSchedulePdfEmployeeBody(fullText: string, periodStart: string, periodEnd: string): string {
+  const firstPeriodIdx = fullText.search(/Période du/i);
+  const prelude =
+    firstPeriodIdx > 0 ? fullText.slice(0, firstPeriodIdx).trim() : "";
+
+  const fragments: string[] = [];
+  const periodLineRe =
+    /Période du\s+(\d{4}-\d{2}-\d{2})\s+au\s+(\d{4}-\d{2}-\d{2})/gi;
+  let m: RegExpExecArray | null;
+  while ((m = periodLineRe.exec(fullText)) !== null) {
+    const s = m[1]!;
+    const e = m[2]!;
+    if (s !== periodStart || e !== periodEnd) continue;
+
+    const afterPeriod = fullText.slice(m.index + m[0].length);
+    const nextIdx = afterPeriod.search(/\n\s*Période du/i);
+    const chunk = (nextIdx >= 0 ? afterPeriod.slice(0, nextIdx) : afterPeriod).trim();
+
+    const lines = chunk
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    let i = 0;
+    while (i < lines.length && /^Horaires$/i.test(lines[i]!)) i++;
+    while (i < lines.length && /Lundi\s+le/i.test(lines[i]!.replace(/\s+/g, " "))) i++;
+    while (i < lines.length && /^Page\s*:/i.test(lines[i]!)) i++;
+    const rest = lines.slice(i).join("\n").trim();
+    if (rest) fragments.push(rest);
+  }
+
+  return [prelude, ...fragments].filter(Boolean).join("\n\n");
+}
+
+function nameTokenKey(pdfName: string): string {
+  const parts = normAscii(pdfName)
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((t) => t.length > 1);
+  return Array.from(new Set(parts)).sort().join(" ");
+}
+
+function timeToMin(t?: string): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((t ?? "").trim());
+  if (!m) return 0;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+/** Préfère travail avec plage, sinon absence/vacances, plutôt que « inconnu ». */
+function dayMergePreference(d: ParsedScheduleDay): number {
+  if (d.kind === "work" && d.expectedStart && d.expectedEnd) {
+    return 10000 + (timeToMin(d.expectedEnd) - timeToMin(d.expectedStart));
+  }
+  if (d.kind === "work") return 5000;
+  if (d.kind === "absence" || d.kind === "vacation") return 1000;
+  if (d.kind === "unknown") return 0;
+  return 100;
+}
+
+function mergeParsedEmployees(employees: ParsedScheduleEmployee[]): ParsedScheduleEmployee[] {
+  const byTok = new Map<
+    string,
+    { roleLabel: string; pdfName: string; days: ParsedScheduleDay[] }
+  >();
+
+  const workDaysCount = (days: ParsedScheduleDay[]) =>
+    days.filter((d) => d.kind === "work").length;
+
+  for (const emp of employees) {
+    const tok = nameTokenKey(emp.pdfName);
+    if (!tok) continue;
+    const cur = byTok.get(tok);
+    if (!cur) {
+      byTok.set(tok, {
+        roleLabel: emp.roleLabel,
+        pdfName: emp.pdfName,
+        days: emp.days.map((d) => ({ ...d })),
+      });
+      continue;
+    }
+
+    if (workDaysCount(emp.days) > workDaysCount(cur.days)) {
+      cur.pdfName = emp.pdfName;
+      cur.roleLabel = emp.roleLabel;
+    }
+
+    for (let i = 0; i < emp.days.length; i++) {
+      const a = cur.days[i]!;
+      const b = emp.days[i]!;
+      if (dayMergePreference(b) > dayMergePreference(a)) {
+        cur.days[i] = { ...b };
+      }
+    }
+  }
+
+  return Array.from(byTok.values()).map((v) => ({
+    pdfName: v.pdfName,
+    roleLabel: v.roleLabel,
+    days: v.days,
+  }));
 }
 
 export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule | null {
@@ -233,6 +432,7 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
 
   const periodStart = periodM[1]!;
   const periodEnd = periodM[2]!;
+  PERIOD_RE.lastIndex = 0;
 
   const headerM = DAY_HEADER_RE.exec(text.replace(/\s+/g, " "));
   const dayNums = headerM
@@ -248,13 +448,16 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
   const workDates = parseWorkDates(periodStart, periodEnd, dayNums);
   if (workDates.length === 0) return null;
 
-  const bodyEnd = text.search(/Période du/i);
-  const body = (bodyEnd > 0 ? text.slice(0, bodyEnd) : text).trim();
-  const lines = normalizeSchedulePdfBodyLines(
-    body
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean)
+  const body = buildSchedulePdfEmployeeBody(text, periodStart, periodEnd);
+  const lines = injectShaimaMissingRoleLine(
+    splitGluedDayHeadLines(
+      normalizeSchedulePdfBodyLines(
+        body
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean)
+      )
+    )
   );
 
   const employees: ParsedScheduleEmployee[] = [];
@@ -296,10 +499,12 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
     const block = lines.slice(j + 1, nextRoleIdx);
 
     const days: ParsedScheduleDay[] = [];
+    const embeddedByDay: string[][] = [];
     let i = 0;
     for (let d = 0; d < workDates.length; d++) {
-      const { day, nextIdx } = parseDaySlot(block, i);
+      const { day, nextIdx, embeddedSubstituteNames } = parseDaySlot(block, i);
       i = nextIdx;
+      embeddedByDay[d] = embeddedSubstituteNames;
       const previous = days[days.length - 1];
       if (isDuplicateReplacanteWorkCell(roleLabel, previous, day)) {
         days.push({
@@ -317,10 +522,45 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
     }
 
     employees.push({ pdfName, roleLabel, days });
+
+    const mainNorm = normAscii(pdfName).replace(/\s+/g, " ");
+    for (let d = 0; d < workDates.length; d++) {
+      for (const sub of embeddedByDay[d] ?? []) {
+        const subNorm = normAscii(sub).replace(/\s+/g, " ");
+        if (!subNorm || subNorm === mainNorm) continue;
+        const slot = days[d]!;
+        if (slot.kind !== "work") continue;
+        employees.push({
+          pdfName: sub,
+          roleLabel,
+          days: workDates.map((wd, idx) =>
+            idx === d
+              ? {
+                  dayIndex: idx,
+                  workDate: wd,
+                  kind: slot.kind,
+                  expectedStart: slot.expectedStart,
+                  expectedEnd: slot.expectedEnd,
+                }
+              : {
+                  dayIndex: idx,
+                  workDate: wd,
+                  kind: "unknown" as ScheduleDayKind,
+                }
+          ),
+        });
+      }
+    }
+
     j = nextRoleIdx;
   }
 
-  return { periodStart, periodEnd, workDates, employees };
+  return {
+    periodStart,
+    periodEnd,
+    workDates,
+    employees: mergeParsedEmployees(employees),
+  };
 }
 
 export type MatchedScheduleEntry = {
