@@ -3,6 +3,7 @@ import {
   healedKindForMisparseEntry,
   normalizeScheduleEntryKind,
 } from "./heal-schedule-absence-travail";
+import { matchPdfNameToEducator } from "./parse-presence-pdf";
 import {
   matchScheduleToEducators,
   parseEmployeeSchedulePdfText,
@@ -10,7 +11,7 @@ import {
 } from "./parse-employee-schedule-pdf";
 
 /** Incrémenter quand la logique d’interprétation du PDF horaire change. */
-export const SCHEDULE_PARSER_VERSION = 6;
+export const SCHEDULE_PARSER_VERSION = 7;
 
 function parseDateOnly(dateStr: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
@@ -130,6 +131,35 @@ async function ensureScheduleUpToDate(scheduleId: string): Promise<void> {
   }
 }
 
+/** Anciens imports : educatorId vide alors que le rapprochement nom fonctionne maintenant. */
+async function backfillNullScheduleEducatorIds(scheduleId: string): Promise<void> {
+  const nullRows = await prisma.employeeScheduleEntry.findMany({
+    where: { scheduleId, educatorId: null },
+    select: { id: true, pdfName: true },
+  });
+  if (nullRows.length === 0) return;
+
+  const educators = await prisma.educator.findMany({
+    select: { id: true, name: true },
+  });
+
+  const updates = nullRows
+    .map((row) => {
+      const hit = matchPdfNameToEducator(row.pdfName, educators);
+      return hit ? { id: row.id, educatorId: hit.id } : null;
+    })
+    .filter((u): u is { id: string; educatorId: string } => u != null);
+
+  await prisma.$transaction(
+    updates.map((u) =>
+      prisma.employeeScheduleEntry.update({
+        where: { id: u.id },
+        data: { educatorId: u.educatorId },
+      })
+    )
+  );
+}
+
 export async function replaceWeeklySchedule(options: {
   periodStart: string;
   periodEnd: string;
@@ -245,6 +275,7 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
   }
 
   await ensureScheduleUpToDate(scheduleRow.id);
+  await backfillNullScheduleEducatorIds(scheduleRow.id);
 
   const weekEntries = await prisma.employeeScheduleEntry.findMany({
     where: { scheduleId: scheduleRow.id },
@@ -256,13 +287,6 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
   dayEntries.sort((a, b) => a.pdfName.localeCompare(b.pdfName));
 
   const educators = await prisma.educator.findMany({
-    where: {
-      id: {
-        in: dayEntries
-          .map((e) => e.educatorId)
-          .filter((id): id is string => Boolean(id)),
-      },
-    },
     select: { id: true, name: true },
   });
   const nameById = new Map(educators.map((e) => [e.id, e.name]));
@@ -279,11 +303,16 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
     },
     entries: dayEntries.map((e) => {
       const kind = normalizeScheduleEntryKind(e, weekEntries);
+      const resolved =
+        e.educatorId != null
+          ? {
+              id: e.educatorId,
+              name: nameById.get(e.educatorId) ?? e.pdfName,
+            }
+          : matchPdfNameToEducator(e.pdfName, educators);
       return {
-        educatorId: e.educatorId ?? undefined,
-        educatorName: e.educatorId
-          ? nameById.get(e.educatorId) ?? undefined
-          : undefined,
+        educatorId: resolved?.id,
+        educatorName: resolved?.name,
         pdfName: e.pdfName,
         roleLabel: e.roleLabel ?? undefined,
         kind,

@@ -137,6 +137,10 @@ function isScheduleEmployeeNameLine(line: string): boolean {
   if (/\d{1,2}:\d{2}/.test(t)) return false;
   if (/^(Travail|Absence|Vacances|AbsenceTravail)\b/i.test(t)) return false;
   if (/^Les\b/i.test(t)) return false;
+  // Tranches d’âge / libellés de groupe (ex. « 2-3 ans Les Jasmins », « 0-18 mois »)
+  if (/\d+\s*[-–]\s*\d+/.test(t)) return false;
+  if (/\b(mois|ans)\b/i.test(t)) return false;
+  if (/^\d/.test(t)) return false;
   return true;
 }
 
