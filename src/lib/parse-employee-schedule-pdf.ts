@@ -544,6 +544,22 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
     const days: ParsedScheduleDay[] = [];
     const embeddedByDay: string[][] = [];
     let i = 0;
+    /** Sous-titres PDF (ex. « Horaire de Shaimaa ») ou répétition du nom avant la 1ʳᵉ case jour. */
+    while (
+      i < block.length &&
+      !isScheduleDayCellHeaderLine(block[i]!.trim())
+    ) {
+      const L = block[i]!.trim();
+      if (/^horaire de\b/i.test(L)) {
+        i++;
+        continue;
+      }
+      if (isScheduleEmployeeNameLine(L)) {
+        i++;
+        continue;
+      }
+      break;
+    }
     for (let d = 0; d < workDates.length; d++) {
       if (i < block.length && !isScheduleDayCellHeaderLine(block[i]!)) {
         for (let d2 = d; d2 < workDates.length; d2++) {
