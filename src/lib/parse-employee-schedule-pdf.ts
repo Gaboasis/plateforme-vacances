@@ -88,7 +88,7 @@ function splitGluedDayHeadLines(lines: string[]): string[] {
     const t = line.trim();
     const compact = t.replace(/\s+/g, "");
     if (/^absenceabsencetravail$/i.test(compact)) {
-      out.push("Absence");
+      /* Une seule cellule métier : « Absence » + « AbsenceTravail » collés ≠ deux jours. */
       out.push("AbsenceTravail");
       continue;
     }
@@ -221,7 +221,7 @@ function isScheduleEmployeeNameLine(line: string): boolean {
   if (ROLE_LINE.test(t)) return false;
   if (TIME_RANGE_RE.test(t)) return false;
   if (/\d{1,2}:\d{2}/.test(t)) return false;
-  if (/^(Travail|Absence|Vacances|AbsenceTravail)\b/i.test(t)) return false;
+  if (isScheduleDayCellHeaderLine(t)) return false;
   if (/^Les\b/i.test(t)) return false;
   // Tranches d’âge / libellés de groupe (ex. « 2-3 ans Les Jasmins », « 0-18 mois »)
   if (/\d+\s*[-–]\s*\d+/.test(t)) return false;
@@ -231,15 +231,96 @@ function isScheduleEmployeeNameLine(line: string): boolean {
   return true;
 }
 
-/** Lignes groupe / horaires après AbsenceTravail (absence malgré le libellé horaire). */
-function skipRestOfScheduleCell(lines: string[], startIdx: number): number {
-  let i = startIdx;
+const DAY_CELL_HEAD_RE =
+  /^(Travail|Absence|Vacances|AbsenceTravail)\b/i;
+
+function isScheduleDayCellHeaderLine(line: string): boolean {
+  return DAY_CELL_HEAD_RE.test(line.trim());
+}
+
+/** « Prénom Nom » sur sa propre ligne juste avant la ligne de rôle = employé suivant (ne pas l’absorber dans la case). */
+function isEmployeeNameThenRoleLine(lines: string[], idx: number): boolean {
+  const L = lines[idx]?.trim() ?? "";
+  if (!/^[A-Za-zÀ-Ÿ][a-zà-ÿ]*\s+[A-Za-zÀ-Ÿ][a-zà-ÿ]/.test(L)) return false;
+  if (/\d/.test(L)) return false;
+  const next = lines[idx + 1]?.trim() ?? "";
+  return ROLE_LINE.test(next);
+}
+
+/** Une « case » jour : en-tête (Travail/Absence/…) + libellés jusqu’au prochain en-tête de jour ou employé. */
+function collectScheduleDayCell(lines: string[], startIdx: number): {
+  cell: string[];
+  nextIdx: number;
+} {
+  if (startIdx >= lines.length) return { cell: [], nextIdx: startIdx };
+  if (!isScheduleDayCellHeaderLine(lines[startIdx]!)) {
+    return { cell: [lines[startIdx]!], nextIdx: startIdx + 1 };
+  }
+
+  const cell: string[] = [lines[startIdx]!];
+  let i = startIdx + 1;
   while (i < lines.length) {
-    const line = lines[i]!.trim();
-    if (/^(Travail|Absence|Vacances|AbsenceTravail)/i.test(line)) break;
+    const L = lines[i]!.trim();
+    if (ROLE_LINE.test(L)) break;
+    if (isEmployeeNameThenRoleLine(lines, i)) break;
+    if (isScheduleDayCellHeaderLine(L)) break;
+    cell.push(lines[i]!);
     i++;
   }
-  return i;
+  return { cell, nextIdx: i };
+}
+
+/**
+ * Règle métier : lire **toute** la case (souvent plusieurs lignes sur 2 pages).
+ * Priorité : Travail → travail | Vacances → congés | AbsenceTravail → absence | Absence → absence
+ */
+function classifyDayCellByKeywords(cellLines: string[]): Omit<
+  ParsedScheduleDay,
+  "dayIndex" | "workDate"
+> {
+  const headRaw = (cellLines[0] ?? "").trim();
+  const compactHead = normAscii(headRaw).replace(/\s+/g, "");
+
+  const blob = cellLines.join("\n");
+  const lower = blob.toLowerCase();
+  const compactNoSpace = lower.replace(/\s+/g, "");
+
+  const headTravail = /^travail\b/i.test(headRaw);
+  const headVacances = /^vacances\b/i.test(headRaw);
+  const headAbsenceTravail = /^absencetravail$/i.test(
+    headRaw.replace(/\s+/g, "")
+  );
+  const headAbsenceOnly =
+    /^absence\b/i.test(headRaw) && !/^absencetravail/i.test(compactHead);
+
+  const bodyHasTravail = /\btravail\b/i.test(lower);
+  const bodyHasVacances = /\bvacances\b/i.test(lower);
+  const bodyHasAbsenceTravail = /absencetravail/i.test(compactNoSpace);
+  const bodyHasAbsenceWord =
+    /\babsence\b/i.test(lower) && !/absencetravail/i.test(compactNoSpace);
+
+  const pickWorkTimes = () => {
+    let expectedStart: string | undefined;
+    let expectedEnd: string | undefined;
+    for (const line of cellLines) {
+      const tm = TIME_RANGE_RE.exec(line.trim());
+      if (tm) {
+        expectedStart = padTime(tm[1]);
+        expectedEnd = padTime(tm[2]);
+        break;
+      }
+    }
+    return { expectedStart, expectedEnd };
+  };
+
+  if (headTravail || (bodyHasTravail && !headAbsenceTravail)) {
+    const { expectedStart, expectedEnd } = pickWorkTimes();
+    return { kind: "work", expectedStart, expectedEnd };
+  }
+  if (headVacances || bodyHasVacances) return { kind: "vacation" };
+  if (headAbsenceTravail || bodyHasAbsenceTravail) return { kind: "absence" };
+  if (headAbsenceOnly || bodyHasAbsenceWord) return { kind: "absence" };
+  return { kind: "unknown" };
 }
 
 /** Deux cellules « Travail » identiques d’affilée = souvent 2 groupes le même jour (remplaçante). */
@@ -261,67 +342,21 @@ function parseDaySlot(lines: string[], startIdx: number): {
   nextIdx: number;
   embeddedSubstituteNames: string[];
 } {
-  let i = startIdx;
-  let kind: ScheduleDayKind = "unknown";
-  let expectedStart: string | undefined;
-  let expectedEnd: string | undefined;
   const embeddedSubstituteNames: string[] = [];
 
-  if (i >= lines.length) {
-    return { day: { kind }, nextIdx: i, embeddedSubstituteNames };
-  }
-
-  const cellStart = i;
-  let head = lines[i]!.trim();
-  i++;
-
-  if (/^Vacances/i.test(head)) {
-    return { day: { kind: "vacation" }, nextIdx: i, embeddedSubstituteNames };
-  }
-  if (/^AbsenceTravail/i.test(head)) {
+  if (startIdx >= lines.length) {
     return {
-      day: { kind: "absence" },
-      nextIdx: skipRestOfScheduleCell(lines, i),
-      embeddedSubstituteNames,
-    };
-  }
-  if (/^Absence/i.test(head)) {
-    return { day: { kind: "absence" }, nextIdx: i, embeddedSubstituteNames };
-  }
-
-  if (/^Travail/i.test(head)) {
-    kind = "work";
-    while (i < lines.length) {
-      const line = lines[i]!.trim();
-      const tm = TIME_RANGE_RE.exec(line);
-      if (tm) {
-        expectedStart = padTime(tm[1]);
-        expectedEnd = padTime(tm[2]);
-        i++;
-        break;
-      }
-      if (ROLE_LINE.test(line)) break;
-      if (
-        line.length > 2 &&
-        !/^Travail|^Absence|^Vacances/.test(line) &&
-        !TIME_RANGE_RE.test(line)
-      ) {
-        i++;
-        continue;
-      }
-      if (/^Travail|^Absence|^Vacances/.test(line)) break;
-      i++;
-    }
-    const daySlice = lines.slice(cellStart, i);
-    embeddedSubstituteNames.push(...extractSubstituteNamesFromDayLines(daySlice));
-    return {
-      day: { kind, expectedStart, expectedEnd },
-      nextIdx: i,
+      day: { kind: "unknown" },
+      nextIdx: startIdx,
       embeddedSubstituteNames,
     };
   }
 
-  return { day: { kind }, nextIdx: i, embeddedSubstituteNames };
+  const { cell, nextIdx } = collectScheduleDayCell(lines, startIdx);
+  embeddedSubstituteNames.push(...extractSubstituteNamesFromDayLines(cell));
+  const day = classifyDayCellByKeywords(cell);
+
+  return { day, nextIdx, embeddedSubstituteNames };
 }
 
 /** Après un saut de page, le PDF répète « Période du… » puis la suite des employés (ex. Souhir). */
@@ -496,12 +531,30 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
       }
     }
 
-    const block = lines.slice(j + 1, nextRoleIdx);
+    let nextEmployeeIdx = lines.length;
+    for (let n = j + 1; n < lines.length - 1; n++) {
+      if (isEmployeeNameThenRoleLine(lines, n)) {
+        nextEmployeeIdx = n;
+        break;
+      }
+    }
+
+    const block = lines.slice(j + 1, Math.min(nextRoleIdx, nextEmployeeIdx));
 
     const days: ParsedScheduleDay[] = [];
     const embeddedByDay: string[][] = [];
     let i = 0;
     for (let d = 0; d < workDates.length; d++) {
+      if (i < block.length && !isScheduleDayCellHeaderLine(block[i]!)) {
+        for (let d2 = d; d2 < workDates.length; d2++) {
+          days.push({
+            dayIndex: d2,
+            workDate: workDates[d2]!,
+            kind: "unknown",
+          });
+        }
+        break;
+      }
       const { day, nextIdx, embeddedSubstituteNames } = parseDaySlot(block, i);
       i = nextIdx;
       embeddedByDay[d] = embeddedSubstituteNames;
