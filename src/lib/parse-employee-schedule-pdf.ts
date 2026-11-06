@@ -28,7 +28,28 @@ export type ParsedWeeklySchedule = {
 const ROLE_LINE =
   /^(Cuisinière|Remplaçante|Éducatrice qualifiée|Éducatrice non qualifiée|Préposée|Secrétaire)$/i;
 
-const ROLE_LINE_FIRST_TOKEN = /^(éducatrice|educatrice)$/i;
+/** Sans accents — le PDF peut mélanger Unicode combiné (é vs e + accent). */
+function normAscii(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function isEducatriceFirstLine(line: string): boolean {
+  return normAscii(line) === "educatrice";
+}
+
+function isQualifieeLine(line: string | undefined): boolean {
+  if (!line) return false;
+  return normAscii(line) === "qualifiee";
+}
+
+function isNonLine(line: string | undefined): boolean {
+  if (!line) return false;
+  return normAscii(line) === "non";
+}
 
 /** PDF : « Éducatrice » et « qualifiée » parfois sur deux lignes → sinon le bloc suivant n’est pas détecté. */
 function normalizeSchedulePdfBodyLines(rawLines: string[]): string[] {
@@ -38,18 +59,12 @@ function normalizeSchedulePdfBodyLines(rawLines: string[]): string[] {
     const line = rawLines[i]!.trim();
     const n1 = rawLines[i + 1]?.trim();
     const n2 = rawLines[i + 2]?.trim();
-    if (ROLE_LINE_FIRST_TOKEN.test(line) && n1 && /^qualifiée$/i.test(n1)) {
+    if (isEducatriceFirstLine(line) && isQualifieeLine(n1)) {
       out.push("Éducatrice qualifiée");
       i += 2;
       continue;
     }
-    if (
-      ROLE_LINE_FIRST_TOKEN.test(line) &&
-      n1 &&
-      /^non$/i.test(n1) &&
-      n2 &&
-      /^qualifiée$/i.test(n2)
-    ) {
+    if (isEducatriceFirstLine(line) && isNonLine(n1) && isQualifieeLine(n2)) {
       out.push("Éducatrice non qualifiée");
       i += 3;
       continue;
