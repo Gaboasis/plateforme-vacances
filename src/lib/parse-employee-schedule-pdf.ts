@@ -126,7 +126,8 @@ function injectShaimaMissingRoleLine(lines: string[]): string[] {
   return out;
 }
 
-const TIME_RANGE_RE = /(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/;
+/** Tiret ASCII, demi-cadratin ou cadratin (souvent dans les PDF). */
+const TIME_RANGE_RE = /(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})/;
 
 /** Parenthèses sur 1 ou plusieurs lignes (ex. « (Souhir \n Romdhane ) »). */
 function extractSubstituteNamesFromDayLines(dayLines: string[]): string[] {
@@ -234,8 +235,13 @@ function isScheduleEmployeeNameLine(line: string): boolean {
 const DAY_CELL_HEAD_RE =
   /^(Travail|Absence|Vacances|AbsenceTravail)\b/i;
 
+/** Caractères invisibles parfois collés avant « Travail » dans l’extraction PDF. */
+function stripScheduleCellLine(line: string): string {
+  return line.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, "").trim();
+}
+
 function isScheduleDayCellHeaderLine(line: string): boolean {
-  return DAY_CELL_HEAD_RE.test(line.trim());
+  return DAY_CELL_HEAD_RE.test(stripScheduleCellLine(line));
 }
 
 /** « Prénom Nom » sur sa propre ligne juste avant la ligne de rôle = employé suivant (ne pas l’absorber dans la case). */
@@ -260,7 +266,7 @@ function collectScheduleDayCell(lines: string[], startIdx: number): {
   const cell: string[] = [lines[startIdx]!];
   let i = startIdx + 1;
   while (i < lines.length) {
-    const L = lines[i]!.trim();
+    const L = stripScheduleCellLine(lines[i]!);
     if (ROLE_LINE.test(L)) break;
     if (isEmployeeNameThenRoleLine(lines, i)) break;
     if (isScheduleDayCellHeaderLine(L)) break;
@@ -278,7 +284,7 @@ function classifyDayCellByKeywords(cellLines: string[]): Omit<
   ParsedScheduleDay,
   "dayIndex" | "workDate"
 > {
-  const headRaw = (cellLines[0] ?? "").trim();
+  const headRaw = stripScheduleCellLine(cellLines[0] ?? "");
   const compactHead = normAscii(headRaw).replace(/\s+/g, "");
 
   const blob = cellLines.join("\n");
@@ -303,7 +309,7 @@ function classifyDayCellByKeywords(cellLines: string[]): Omit<
     let expectedStart: string | undefined;
     let expectedEnd: string | undefined;
     for (const line of cellLines) {
-      const tm = TIME_RANGE_RE.exec(line.trim());
+      const tm = TIME_RANGE_RE.exec(stripScheduleCellLine(line));
       if (tm) {
         expectedStart = padTime(tm[1]);
         expectedEnd = padTime(tm[2]);
@@ -545,11 +551,8 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
     const embeddedByDay: string[][] = [];
     let i = 0;
     /** Sous-titres PDF (ex. « Horaire de Shaimaa ») ou répétition du nom avant la 1ʳᵉ case jour. */
-    while (
-      i < block.length &&
-      !isScheduleDayCellHeaderLine(block[i]!.trim())
-    ) {
-      const L = block[i]!.trim();
+    while (i < block.length && !isScheduleDayCellHeaderLine(block[i]!)) {
+      const L = stripScheduleCellLine(block[i]!);
       if (/^horaire de\b/i.test(L)) {
         i++;
         continue;

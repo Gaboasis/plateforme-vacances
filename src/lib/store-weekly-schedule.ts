@@ -11,7 +11,7 @@ import {
 } from "./parse-employee-schedule-pdf";
 
 /** Incrémenter quand la logique d’interprétation du PDF horaire change. */
-export const SCHEDULE_PARSER_VERSION = 12;
+export const SCHEDULE_PARSER_VERSION = 13;
 
 function parseDateOnly(dateStr: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
@@ -254,6 +254,49 @@ export async function listWeeklySchedules(limit = 12): Promise<WeeklyScheduleSum
   }));
 }
 
+function scheduleEntryPreferenceRank(kind: string): number {
+  if (kind === "work") return 4;
+  if (kind === "absence" || kind === "vacation") return 3;
+  if (kind === "unknown") return 1;
+  return 2;
+}
+
+/** Plusieurs lignes (ex. Mohamed Hosny + Mohamed Hosny Shaimaa) → garder la meilleure interprétation. */
+function dedupeDayEntriesByEducator<
+  T extends {
+    educatorId: string | null;
+    pdfName: string;
+    kind: string;
+    expectedStart: string | null;
+    expectedEnd: string | null;
+  },
+>(rows: T[]): T[] {
+  const byKey = new Map<string, T>();
+  for (const e of rows) {
+    const key = e.educatorId?.trim() || e.pdfName.trim();
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, e);
+      continue;
+    }
+    const rNew = scheduleEntryPreferenceRank(e.kind);
+    const rOld = scheduleEntryPreferenceRank(prev.kind);
+    if (rNew > rOld) {
+      byKey.set(key, e);
+      continue;
+    }
+    if (rNew < rOld) continue;
+    const newHasTimes = Boolean(
+      (e.expectedStart ?? "").trim() && (e.expectedEnd ?? "").trim()
+    );
+    const oldHasTimes = Boolean(
+      (prev.expectedStart ?? "").trim() && (prev.expectedEnd ?? "").trim()
+    );
+    if (newHasTimes && !oldHasTimes) byKey.set(key, e);
+  }
+  return Array.from(byKey.values());
+}
+
 export async function getScheduleContextForDate(dateStr: string): Promise<{
   schedule: WeeklyScheduleSummary | null;
   entries: ScheduleEntryForDay[];
@@ -289,6 +332,23 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
   const educators = await prisma.educator.findMany({
     select: { id: true, name: true },
   });
+
+  const dayEntriesWithResolved = dayEntries.map((e) => {
+    const resolvedId =
+      e.educatorId ??
+      matchPdfNameToEducator(e.pdfName, educators)?.id ??
+      null;
+    return { row: e, resolvedEducatorId: resolvedId };
+  });
+
+  const dedupedRows = dedupeDayEntriesByEducator(
+    dayEntriesWithResolved.map(({ row, resolvedEducatorId }) => ({
+      ...row,
+      educatorId: resolvedEducatorId,
+    }))
+  );
+  dedupedRows.sort((a, b) => a.pdfName.localeCompare(b.pdfName));
+
   const nameById = new Map(educators.map((e) => [e.id, e.name]));
 
   return {
@@ -301,7 +361,7 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
       createdAt: scheduleRow.createdAt.toISOString(),
       entryCount: scheduleRow._count.entries,
     },
-    entries: dayEntries.map((e) => {
+    entries: dedupedRows.map((e) => {
       const kind = normalizeScheduleEntryKind(e, weekEntries);
       const resolved =
         e.educatorId != null
