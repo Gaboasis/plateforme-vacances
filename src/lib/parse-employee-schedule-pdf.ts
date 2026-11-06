@@ -69,6 +69,12 @@ function normalizeSchedulePdfBodyLines(rawLines: string[]): string[] {
       i += 3;
       continue;
     }
+    // « Éducatrice non » sur une ligne + « qualifiée » (PDF compact ou césure).
+    if (normAscii(line) === "educatrice non" && isQualifieeLine(n1)) {
+      out.push("Éducatrice non qualifiée");
+      i += 2;
+      continue;
+    }
     out.push(line);
     i++;
   }
@@ -120,6 +126,18 @@ function parseWorkDates(
     }
   }
   return out.slice(0, 5);
+}
+
+/** Ligne de nom avant le rôle (pas une cellule jour ni un en-tête de groupe). */
+function isScheduleEmployeeNameLine(line: string): boolean {
+  const t = line.trim();
+  if (t.length < 2) return false;
+  if (ROLE_LINE.test(t)) return false;
+  if (TIME_RANGE_RE.test(t)) return false;
+  if (/\d{1,2}:\d{2}/.test(t)) return false;
+  if (/^(Travail|Absence|Vacances|AbsenceTravail)\b/i.test(t)) return false;
+  if (/^Les\b/i.test(t)) return false;
+  return true;
 }
 
 /** Lignes groupe / horaires après AbsenceTravail (absence malgré le libellé horaire). */
@@ -235,19 +253,43 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
       .filter(Boolean)
   );
 
-  const employeeStarts: number[] = [];
-  for (let j = 0; j < lines.length - 1; j++) {
-    if (ROLE_LINE.test(lines[j + 1]!)) employeeStarts.push(j);
-  }
-
   const employees: ParsedScheduleEmployee[] = [];
 
-  for (let e = 0; e < employeeStarts.length; e++) {
-    const nameIdx = employeeStarts[e]!;
-    const nextNameIdx = employeeStarts[e + 1] ?? lines.length;
-    const pdfName = lines[nameIdx]!;
-    const roleLabel = lines[nameIdx + 1]!;
-    const block = lines.slice(nameIdx + 2, nextNameIdx);
+  let j = 0;
+  while (j < lines.length) {
+    if (!ROLE_LINE.test(lines[j]!)) {
+      j++;
+      continue;
+    }
+
+    const roleLabel = lines[j]!;
+
+    const nameParts: string[] = [];
+    let k = j - 1;
+    while (
+      k >= 0 &&
+      nameParts.length < 3 &&
+      isScheduleEmployeeNameLine(lines[k]!)
+    ) {
+      nameParts.unshift(lines[k]!.trim());
+      k--;
+    }
+    if (nameParts.length === 0) {
+      j++;
+      continue;
+    }
+
+    const pdfName = nameParts.join(" ");
+
+    let nextRoleIdx = lines.length;
+    for (let n = j + 1; n < lines.length; n++) {
+      if (ROLE_LINE.test(lines[n]!)) {
+        nextRoleIdx = n;
+        break;
+      }
+    }
+
+    const block = lines.slice(j + 1, nextRoleIdx);
 
     const days: ParsedScheduleDay[] = [];
     let i = 0;
@@ -271,6 +313,7 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
     }
 
     employees.push({ pdfName, roleLabel, days });
+    j = nextRoleIdx;
   }
 
   return { periodStart, periodEnd, workDates, employees };
