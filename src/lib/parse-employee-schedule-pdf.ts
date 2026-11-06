@@ -28,6 +28,38 @@ export type ParsedWeeklySchedule = {
 const ROLE_LINE =
   /^(Cuisinière|Remplaçante|Éducatrice qualifiée|Éducatrice non qualifiée|Préposée|Secrétaire)$/i;
 
+const ROLE_LINE_FIRST_TOKEN = /^(éducatrice|educatrice)$/i;
+
+/** PDF : « Éducatrice » et « qualifiée » parfois sur deux lignes → sinon le bloc suivant n’est pas détecté. */
+function normalizeSchedulePdfBodyLines(rawLines: string[]): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < rawLines.length) {
+    const line = rawLines[i]!.trim();
+    const n1 = rawLines[i + 1]?.trim();
+    const n2 = rawLines[i + 2]?.trim();
+    if (ROLE_LINE_FIRST_TOKEN.test(line) && n1 && /^qualifiée$/i.test(n1)) {
+      out.push("Éducatrice qualifiée");
+      i += 2;
+      continue;
+    }
+    if (
+      ROLE_LINE_FIRST_TOKEN.test(line) &&
+      n1 &&
+      /^non$/i.test(n1) &&
+      n2 &&
+      /^qualifiée$/i.test(n2)
+    ) {
+      out.push("Éducatrice non qualifiée");
+      i += 3;
+      continue;
+    }
+    out.push(line);
+    i++;
+  }
+  return out;
+}
+
 const TIME_RANGE_RE = /(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/;
 
 const PERIOD_RE =
@@ -181,10 +213,12 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
 
   const bodyEnd = text.search(/Période du/i);
   const body = (bodyEnd > 0 ? text.slice(0, bodyEnd) : text).trim();
-  const lines = body
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
+  const lines = normalizeSchedulePdfBodyLines(
+    body
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+  );
 
   const employeeStarts: number[] = [];
   for (let j = 0; j < lines.length - 1; j++) {
