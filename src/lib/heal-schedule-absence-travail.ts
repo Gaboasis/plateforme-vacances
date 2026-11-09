@@ -23,13 +23,6 @@ export function weekdayDatesInSchedule(
   ).sort();
 }
 
-function isSamihaEntry(e: ScheduleEntryRow): boolean {
-  return (
-    e.educatorId === "samiha" ||
-    /jaouadi|samiha/i.test(e.pdfName)
-  );
-}
-
 function isKarimaEntry(e: ScheduleEntryRow): boolean {
   return (
     e.educatorId === "10" ||
@@ -53,14 +46,6 @@ export function isAbsenceTravailMisparseEntry(
   weekEntries: ScheduleEntryRow[]
 ): boolean {
   if (entry.kind !== "work") return false;
-
-  if (
-    isSamihaEntry(entry) &&
-    entry.expectedStart === "09:00" &&
-    entry.expectedEnd === "17:30"
-  ) {
-    return true;
-  }
 
   if (
     /^Remplaçante$/i.test(entry.roleLabel?.trim() ?? "") &&
