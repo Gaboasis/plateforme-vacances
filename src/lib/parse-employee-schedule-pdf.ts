@@ -88,8 +88,10 @@ function splitGluedDayHeadLines(lines: string[]): string[] {
     const t = line.trim();
     const compact = t.replace(/\s+/g, "");
     if (/^absenceabsencetravail$/i.test(compact)) {
-      /* Une seule cellule métier : « Absence » + « AbsenceTravail » collés ≠ deux jours. */
-      out.push("AbsenceTravail");
+      /* Ex. Shaimaa : lundi + mardi absence, mercredi travail — trois en-têtes collés. */
+      out.push("Absence");
+      out.push("Absence");
+      out.push("Travail");
       continue;
     }
     out.push(line);
@@ -514,12 +516,14 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
 
     const nameParts: string[] = [];
     let k = j - 1;
-    while (
-      k >= 0 &&
-      nameParts.length < 3 &&
-      isScheduleEmployeeNameLine(lines[k]!)
-    ) {
-      nameParts.unshift(lines[k]!.trim());
+    while (k >= 0 && nameParts.length < 4) {
+      const line = lines[k]!.trim();
+      if (/^horaire de\b/i.test(line)) {
+        k--;
+        continue;
+      }
+      if (!isScheduleEmployeeNameLine(line)) break;
+      nameParts.unshift(line);
       k--;
     }
     if (nameParts.length === 0) {
