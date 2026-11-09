@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import pdf from "pdf-parse";
 import { getEducators } from "@/lib/store";
 import { isFullAdmin } from "@/lib/staff-actor";
-import {
-  matchScheduleToEducators,
-  parseEmployeeSchedulePdfText,
-} from "@/lib/parse-employee-schedule-pdf";
+import { matchScheduleToEducators } from "@/lib/parse-employee-schedule-pdf";
+import { parseEmployeeSchedulePdfBuffer } from "@/lib/parse-employee-schedule-pdf-grid";
 import {
   deleteWeeklySchedule,
   listWeeklySchedules,
@@ -70,7 +68,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const schedule = parseEmployeeSchedulePdfText(text);
+    const schedule = await parseEmployeeSchedulePdfBuffer(buffer, text);
     if (!schedule) {
       return NextResponse.json(
         {

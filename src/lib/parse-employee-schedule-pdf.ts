@@ -27,7 +27,7 @@ export type ParsedWeeklySchedule = {
   employees: ParsedScheduleEmployee[];
 };
 
-const ROLE_LINE =
+export const ROLE_LINE =
   /^(Cuisinière|Remplaçante|Éducatrice qualifiée|Éducatrice non qualifiée|Préposée|Secrétaire)$/i;
 
 /** Sans accents — le PDF peut mélanger Unicode combiné (é vs e + accent). */
@@ -131,10 +131,10 @@ function injectShaimaMissingRoleLine(lines: string[]): string[] {
 }
 
 /** Tiret ASCII, demi-cadratin ou cadratin (souvent dans les PDF). */
-const TIME_RANGE_RE = /(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})/;
+export const TIME_RANGE_RE = /(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})/;
 
 /** Parenthèses sur 1 ou plusieurs lignes (ex. « (Souhir \n Romdhane ) »). */
-function extractSubstituteNamesFromDayLines(dayLines: string[]): string[] {
+export function extractSubstituteNamesFromDayLines(dayLines: string[]): string[] {
   const blob = dayLines.join("\n");
   const out: string[] = [];
   let pos = 0;
@@ -174,10 +174,10 @@ function extractSubstituteNamesFromDayLines(dayLines: string[]): string[] {
   return Array.from(new Set(out));
 }
 
-const PERIOD_RE =
+export const PERIOD_RE =
   /Période du (\d{4}-\d{2}-\d{2}) au (\d{4}-\d{2}-\d{2})/gi;
 
-const DAY_HEADER_RE =
+export const DAY_HEADER_RE =
   /Lundi le (\d{1,2}).*?Mardi le (\d{1,2}).*?Mercredi le (\d{1,2}).*?Jeudi le (\d{1,2}).*?Vendredi le (\d{1,2})/i;
 
 function padTime(t: string): string {
@@ -186,7 +186,7 @@ function padTime(t: string): string {
   return `${String(parseInt(m[1], 10)).padStart(2, "0")}:${m[2]}`;
 }
 
-function parseWorkDates(
+export function parseWorkDates(
   periodStart: string,
   periodEnd: string,
   dayNumbers: number[]
@@ -240,7 +240,7 @@ const DAY_CELL_HEAD_RE =
   /^(Travail|Absence|Vacances|AbsenceTravail)\b/i;
 
 /** Caractères invisibles parfois collés avant « Travail » dans l’extraction PDF. */
-function stripScheduleCellLine(line: string): string {
+export function stripScheduleCellLine(line: string): string {
   return line.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, "").trim();
 }
 
@@ -284,7 +284,7 @@ function collectScheduleDayCell(lines: string[], startIdx: number): {
  * Règle métier : lire **toute** la case (souvent plusieurs lignes sur 2 pages).
  * Priorité : Travail → travail | Vacances → congés | AbsenceTravail → absence | Absence → absence
  */
-function classifyDayCellByKeywords(cellLines: string[]): Omit<
+export function classifyDayCellByKeywords(cellLines: string[]): Omit<
   ParsedScheduleDay,
   "dayIndex" | "workDate"
 > {
@@ -608,7 +608,7 @@ function reconcileFridayWithPredominantSlot(
   }
 }
 
-function mergeParsedEmployees(employees: ParsedScheduleEmployee[]): ParsedScheduleEmployee[] {
+export function mergeParsedEmployees(employees: ParsedScheduleEmployee[]): ParsedScheduleEmployee[] {
   const byTok = new Map<
     string,
     {
