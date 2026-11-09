@@ -1581,7 +1581,8 @@ export default function AdminPage() {
             <strong>déjà enregistrée</strong> est modifiée, qu&apos;une ligne est
             ajoutée ou supprimée, ou qu&apos;un admin supprime une journée. La
             première saisie d&apos;un jour n&apos;est pas listée. Les changements
-            sont comparés avant / après enregistrement.
+            (dont <strong>heures d&apos;entrée et de sortie</strong> après import
+            PDF ou correction manuelle) sont comparés avant / après enregistrement.
           </p>
           {accountingAuditLogs.length === 0 ? (
             <div className="card text-center py-16">
@@ -1666,9 +1667,18 @@ export default function AdminPage() {
                             </ul>
                           ) : parsed?.snapshot ? (
                             <span className="text-xs text-slate-600">
+                              {(parsed.snapshot.clockIn ||
+                                parsed.snapshot.clockOut) && (
+                                <>
+                                  Pointage :{" "}
+                                  {parsed.snapshot.clockIn ?? "—"} →{" "}
+                                  {parsed.snapshot.clockOut ?? "—"}
+                                  {" · "}
+                                </>
+                              )}
                               {parsed.snapshot.hoursWorked != null && (
                                 <>
-                                  Heures : {parsed.snapshot.hoursWorked} h
+                                  Heures payables : {parsed.snapshot.hoursWorked} h
                                   {" · "}
                                 </>
                               )}

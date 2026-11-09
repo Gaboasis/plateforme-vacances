@@ -2,6 +2,7 @@ import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 import type { DailyJournal, JournalLine, JournalLineCategory } from "@/types";
 import type { JournalLineInput } from "./store-accounting";
+import { normalizeClockTime } from "./payroll-work-hours";
 import { AUDIT_ACTIONS, createAuditLog } from "./store";
 
 const CATEGORY_LABELS: Record<JournalLineCategory, string> = {
@@ -31,6 +32,8 @@ type ComparableLine = {
   childCount: number | null;
   dailyRateCents: number | null;
   employerContributionPercent: number | null;
+  clockIn: string | null;
+  clockOut: string | null;
 };
 
 export type AccountingAuditDetail = {
@@ -50,6 +53,8 @@ export type AccountingAuditDetail = {
     hoursWorked?: number | null;
     hourlyRateCents?: number | null;
     childCount?: number | null;
+    clockIn?: string | null;
+    clockOut?: string | null;
   };
 };
 
@@ -62,8 +67,10 @@ function formatHours(h: number): string {
 }
 
 const FIELD_LABELS: Record<string, string> = {
-  amountCents: "Montant",
-  hoursWorked: "Heures",
+  clockIn: "Pointage — heure d'entrée",
+  clockOut: "Pointage — heure de sortie",
+  amountCents: "Montant brut",
+  hoursWorked: "Heures payables",
   hourlyRateCents: "Taux horaire",
   childCount: "Nombre d'enfants",
   dailyRateCents: "Tarif journalier",
@@ -71,8 +78,16 @@ const FIELD_LABELS: Record<string, string> = {
   label: "Libellé",
 };
 
+function normClockForAudit(value: string | null | undefined): string | null {
+  const n = normalizeClockTime(value ?? undefined);
+  return n ?? null;
+}
+
 function displayField(field: string, value: unknown): string {
   if (value == null || value === "") return "—";
+  if (field === "clockIn" || field === "clockOut") {
+    return normClockForAudit(String(value)) ?? "—";
+  }
   if (field === "amountCents" || field === "hourlyRateCents" || field === "dailyRateCents") {
     return formatMoney(Number(value));
   }
@@ -127,6 +142,8 @@ function toComparable(
     childCount: line.childCount ?? null,
     dailyRateCents: line.dailyRateCents ?? null,
     employerContributionPercent: line.employerContributionPercent ?? null,
+    clockIn: normClockForAudit(line.clockIn ?? undefined),
+    clockOut: normClockForAudit(line.clockOut ?? undefined),
   };
 }
 
@@ -134,7 +151,14 @@ function buildLineSummary(line: ComparableLine): string {
   const cat = CATEGORY_LABELS[line.category] ?? line.category;
   const who = line.educatorName ? ` — ${line.educatorName}` : "";
   const lbl = line.label ? ` (${line.label})` : "";
-  return `${line.kind === "revenue" ? "Revenu" : "Dépense"} : ${cat}${who}${lbl}`;
+  let summary = `${line.kind === "revenue" ? "Revenu" : "Dépense"} : ${cat}${who}${lbl}`;
+  if (
+    line.category === "expense_educator_gross" &&
+    (line.clockIn || line.clockOut)
+  ) {
+    summary += ` · pointage ${displayField("clockIn", line.clockIn)} → ${displayField("clockOut", line.clockOut)}`;
+  }
+  return summary;
 }
 
 function diffLines(
@@ -142,8 +166,10 @@ function diffLines(
   after: ComparableLine
 ): AccountingAuditDetail["changes"] {
   const fields: (keyof ComparableLine)[] = [
-    "amountCents",
+    "clockIn",
+    "clockOut",
     "hoursWorked",
+    "amountCents",
     "hourlyRateCents",
     "childCount",
     "dailyRateCents",
@@ -154,8 +180,12 @@ function diffLines(
   for (const field of fields) {
     const b = before[field];
     const a = after[field];
-    const bNorm = b === null || b === undefined ? null : b;
-    const aNorm = a === null || a === undefined ? null : a;
+    let bNorm = b === null || b === undefined || b === "" ? null : b;
+    let aNorm = a === null || a === undefined || a === "" ? null : a;
+    if (field === "clockIn" || field === "clockOut") {
+      bNorm = normClockForAudit(bNorm as string | null);
+      aNorm = normClockForAudit(aNorm as string | null);
+    }
     if (bNorm === aNorm) continue;
     if (field === "amountCents" && Number(bNorm) === Number(aNorm)) continue;
     changes.push({
@@ -233,6 +263,8 @@ export async function recordAccountingJournalSaveAudit(options: {
             hoursWorked: oldLine.hoursWorked,
             hourlyRateCents: oldLine.hourlyRateCents,
             childCount: oldLine.childCount,
+            clockIn: oldLine.clockIn,
+            clockOut: oldLine.clockOut,
           },
         },
         actorId,
@@ -272,6 +304,8 @@ export async function recordAccountingJournalSaveAudit(options: {
           hoursWorked: newLine.hoursWorked,
           hourlyRateCents: newLine.hourlyRateCents,
           childCount: newLine.childCount,
+          clockIn: newLine.clockIn,
+          clockOut: newLine.clockOut,
         },
       },
       actorId,
@@ -304,6 +338,8 @@ export async function recordAccountingJournalDeleteAudit(options: {
           hoursWorked: c.hoursWorked,
           hourlyRateCents: c.hourlyRateCents,
           childCount: c.childCount,
+          clockIn: c.clockIn,
+          clockOut: c.clockOut,
         },
       },
       actorId,
