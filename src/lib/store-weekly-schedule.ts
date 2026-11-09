@@ -8,10 +8,11 @@ import {
   matchScheduleToEducators,
   type MatchedScheduleEntry,
 } from "./parse-employee-schedule-pdf";
+import type { ScheduleEntryRow } from "./heal-schedule-absence-travail";
 import { parseEmployeeSchedulePdfBuffer } from "./parse-employee-schedule-pdf-grid";
 
 /** Incrémenter quand la logique d’interprétation du PDF horaire change. */
-export const SCHEDULE_PARSER_VERSION = 20;
+export const SCHEDULE_PARSER_VERSION = 21;
 
 function parseDateOnly(dateStr: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
@@ -262,6 +263,40 @@ export async function listWeeklySchedules(limit = 12): Promise<WeeklyScheduleSum
   }));
 }
 
+function timeToMinHm(t: string | null | undefined): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((t ?? "").trim());
+  if (!m) return 0;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+async function matchedWeekFromStoredPdf(
+  rawPdfBytes: Uint8Array,
+  rawPdfText: string | null | undefined,
+  educators: { id: string; name: string }[]
+) {
+  const parsed = await parseEmployeeSchedulePdfBuffer(
+    Buffer.from(rawPdfBytes),
+    rawPdfText?.trim() || undefined
+  );
+  if (!parsed) return null;
+  return matchScheduleToEducators(parsed, educators);
+}
+
+function matchedEntriesToHealRows(
+  entries: MatchedScheduleEntry[]
+): ScheduleEntryRow[] {
+  return entries.map((e, i) => ({
+    id: `grid-${i}`,
+    educatorId: e.educatorId,
+    pdfName: e.pdfName,
+    roleLabel: e.roleLabel ?? null,
+    workDate: parseDateOnly(e.workDate),
+    kind: e.kind,
+    expectedStart: e.expectedStart ?? null,
+    expectedEnd: e.expectedEnd ?? null,
+  }));
+}
+
 function scheduleEntryPreferenceRank(kind: string): number {
   if (kind === "work") return 4;
   if (kind === "absence" || kind === "vacation") return 3;
@@ -300,14 +335,54 @@ function dedupeDayEntriesByEducator<
     const oldHasTimes = Boolean(
       (prev.expectedStart ?? "").trim() && (prev.expectedEnd ?? "").trim()
     );
-    if (newHasTimes && !oldHasTimes) byKey.set(key, e);
+    if (newHasTimes && !oldHasTimes) {
+      byKey.set(key, e);
+      continue;
+    }
+    if (newHasTimes && oldHasTimes) {
+      if (timeToMinHm(e.expectedEnd) > timeToMinHm(prev.expectedEnd)) {
+        byKey.set(key, e);
+      }
+    }
   }
   return Array.from(byKey.values());
+}
+
+function mapMatchedEntryToDayRow(
+  e: MatchedScheduleEntry,
+  weekHealRows: ScheduleEntryRow[],
+  nameById: Map<string, string>
+): ScheduleEntryForDay {
+  const healRow: ScheduleEntryRow = {
+    id: `${e.educatorId}-${e.workDate}`,
+    educatorId: e.educatorId,
+    pdfName: e.pdfName,
+    roleLabel: e.roleLabel ?? null,
+    workDate: parseDateOnly(e.workDate),
+    kind: e.kind,
+    expectedStart: e.expectedStart ?? null,
+    expectedEnd: e.expectedEnd ?? null,
+  };
+  const kind = normalizeScheduleEntryKind(healRow, weekHealRows);
+  const hasTimeRange = Boolean(e.expectedStart?.trim() && e.expectedEnd?.trim());
+  const exposeTimes =
+    kind === "work" || (kind === "unknown" && hasTimeRange);
+
+  return {
+    educatorId: e.educatorId,
+    educatorName: nameById.get(e.educatorId) ?? e.educatorName,
+    pdfName: e.pdfName,
+    roleLabel: e.roleLabel,
+    kind,
+    expectedStart: exposeTimes ? e.expectedStart : undefined,
+    expectedEnd: exposeTimes ? e.expectedEnd : undefined,
+  };
 }
 
 export async function getScheduleContextForDate(dateStr: string): Promise<{
   schedule: WeeklyScheduleSummary | null;
   entries: ScheduleEntryForDay[];
+  needsPdfReupload?: boolean;
 }> {
   const day = parseDateOnly(dateStr);
   const scheduleRow = await prisma.employeeWeeklySchedule.findFirst({
@@ -328,6 +403,67 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
   await ensureScheduleUpToDate(scheduleRow.id);
   await backfillNullScheduleEducatorIds(scheduleRow.id);
 
+  const educators = await prisma.educator.findMany({
+    select: { id: true, name: true },
+  });
+  const nameById = new Map(educators.map((e) => [e.id, e.name]));
+  const eduList = educators.map((e) => ({ id: e.id, name: e.name }));
+
+  const scheduleSummary: WeeklyScheduleSummary = {
+    id: scheduleRow.id,
+    periodStart: dateToIso(scheduleRow.periodStart),
+    periodEnd: dateToIso(scheduleRow.periodEnd),
+    sourceFileName: scheduleRow.sourceFileName ?? undefined,
+    uploadedByName: scheduleRow.uploadedByName,
+    createdAt: scheduleRow.createdAt.toISOString(),
+    entryCount: scheduleRow._count.entries,
+  };
+
+  let pdfRow: { rawPdfBytes: Uint8Array | null; rawPdfText: string | null } | null =
+    null;
+  try {
+    pdfRow = await prisma.employeeWeeklySchedule.findUnique({
+      where: { id: scheduleRow.id },
+      select: { rawPdfBytes: true, rawPdfText: true },
+    });
+  } catch {
+    pdfRow = null;
+  }
+
+  if (pdfRow?.rawPdfBytes?.length) {
+    const matched = await matchedWeekFromStoredPdf(
+      pdfRow.rawPdfBytes,
+      pdfRow.rawPdfText,
+      eduList
+    );
+    if (matched) {
+      const weekHealRows = matchedEntriesToHealRows(matched.entries);
+      const dayMatched = matched.entries.filter((e) => e.workDate === dateStr);
+      const bestByEducator = new Map<string, MatchedScheduleEntry>();
+      for (const e of dayMatched) {
+        const id = e.educatorId;
+        const cur = bestByEducator.get(id);
+        if (!cur) {
+          bestByEducator.set(id, e);
+          continue;
+        }
+        const rNew = scheduleEntryPreferenceRank(e.kind);
+        const rOld = scheduleEntryPreferenceRank(cur.kind);
+        if (rNew > rOld) {
+          bestByEducator.set(id, e);
+          continue;
+        }
+        if (rNew === rOld && timeToMinHm(e.expectedEnd) > timeToMinHm(cur.expectedEnd)) {
+          bestByEducator.set(id, e);
+        }
+      }
+      const entries = Array.from(bestByEducator.values())
+        .map((e) => mapMatchedEntryToDayRow(e, weekHealRows, nameById))
+        .sort((a, b) => (a.pdfName ?? "").localeCompare(b.pdfName ?? ""));
+      return { schedule: scheduleSummary, entries };
+    }
+  }
+
   const weekEntries = await prisma.employeeScheduleEntry.findMany({
     where: { scheduleId: scheduleRow.id },
   });
@@ -336,10 +472,6 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
     (e) => dateToIso(e.workDate) === dateStr
   );
   dayEntries.sort((a, b) => a.pdfName.localeCompare(b.pdfName));
-
-  const educators = await prisma.educator.findMany({
-    select: { id: true, name: true },
-  });
 
   const dayEntriesWithResolved = dayEntries.map((e) => {
     const resolvedId =
@@ -357,18 +489,9 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
   );
   dedupedRows.sort((a, b) => a.pdfName.localeCompare(b.pdfName));
 
-  const nameById = new Map(educators.map((e) => [e.id, e.name]));
-
   return {
-    schedule: {
-      id: scheduleRow.id,
-      periodStart: dateToIso(scheduleRow.periodStart),
-      periodEnd: dateToIso(scheduleRow.periodEnd),
-      sourceFileName: scheduleRow.sourceFileName ?? undefined,
-      uploadedByName: scheduleRow.uploadedByName,
-      createdAt: scheduleRow.createdAt.toISOString(),
-      entryCount: scheduleRow._count.entries,
-    },
+    schedule: scheduleSummary,
+    needsPdfReupload: !pdfRow?.rawPdfBytes?.length,
     entries: dedupedRows.map((e) => {
       const kind = normalizeScheduleEntryKind(e, weekEntries);
       const resolved =

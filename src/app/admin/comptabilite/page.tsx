@@ -140,6 +140,7 @@ export default function ComptabilitePage() {
     ScheduleEntryForDay[]
   >([]);
   const [scheduleWeekLabel, setScheduleWeekLabel] = useState<string | null>(null);
+  const [scheduleNeedsPdfReupload, setScheduleNeedsPdfReupload] = useState(false);
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [config, setConfig] = useState<AccountingConfig | null>(null);
   const [payRates, setPayRates] = useState<EducatorPaySummary[]>([]);
@@ -390,9 +391,11 @@ export default function ComptabilitePage() {
             `${data.schedule.periodStart} → ${data.schedule.periodEnd}`
           );
           setScheduleDayEntries(Array.isArray(data.entries) ? data.entries : []);
+          setScheduleNeedsPdfReupload(Boolean(data.needsPdfReupload));
         } else {
           setScheduleWeekLabel(null);
           setScheduleDayEntries([]);
+          setScheduleNeedsPdfReupload(false);
         }
       })
       .catch(() => {
@@ -1448,6 +1451,13 @@ export default function ComptabilitePage() {
               readOnly={journalReadOnly}
               onApplyHours={applyPresenceImport}
             />
+            {isAdminUser && scheduleNeedsPdfReupload && (
+              <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                Pour des heures prévues fiables, réimportez le PDF « Horaire employé »
+                de cette semaine (onglet Horaire PDF). Sans le fichier enregistré, la
+                compta utilise encore d&apos;anciennes données incorrectes.
+              </p>
+            )}
             {isAdminUser && (
               <ScheduleVariancePanel
                 loading={scheduleDayLoading}
