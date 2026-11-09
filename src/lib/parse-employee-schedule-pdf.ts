@@ -405,10 +405,6 @@ function buildSchedulePdfEmployeeBody(fullText: string, periodStart: string, per
 
 function nameTokenKey(pdfName: string): string {
   const n = normAscii(pdfName).replace(/\s+/g, " ");
-  /** PDF : « Bachtaka Saliha » et « Jaouadi Samiha » = même personne. */
-  if (/(?:^|\s)(samiha|saliha)(?:\s|$)/.test(n)) {
-    return "profile:samiha";
-  }
   const parts = n.split(/\s+/).filter((t) => t.length > 1);
   return Array.from(new Set(parts)).sort().join(" ");
 }
