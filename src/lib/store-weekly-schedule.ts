@@ -6,12 +6,12 @@ import {
 import { matchPdfNameToEducator } from "./parse-presence-pdf";
 import {
   matchScheduleToEducators,
-  parseEmployeeSchedulePdfText,
   type MatchedScheduleEntry,
 } from "./parse-employee-schedule-pdf";
+import { parseEmployeeSchedulePdfBuffer } from "./parse-employee-schedule-pdf-grid";
 
 /** Incrémenter quand la logique d’interprétation du PDF horaire change. */
-export const SCHEDULE_PARSER_VERSION = 19;
+export const SCHEDULE_PARSER_VERSION = 20;
 
 function parseDateOnly(dateStr: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
@@ -43,13 +43,19 @@ export type ScheduleEntryForDay = {
   expectedEnd?: string;
 };
 
-async function refreshScheduleFromRawText(scheduleId: string): Promise<void> {
+async function refreshScheduleFromStoredPdf(scheduleId: string): Promise<void> {
   const row = await prisma.employeeWeeklySchedule.findUnique({
     where: { id: scheduleId },
   });
-  if (!row?.rawPdfText?.trim()) return;
+  if (!row?.rawPdfBytes?.length) {
+    /* Sans le fichier PDF, le reparse texte dégrade les horaires (ex. Samiha, Shaimaa). */
+    return;
+  }
 
-  const parsed = parseEmployeeSchedulePdfText(row.rawPdfText);
+  const parsed = await parseEmployeeSchedulePdfBuffer(
+    Buffer.from(row.rawPdfBytes),
+    row.rawPdfText?.trim() ?? undefined
+  );
   if (!parsed) return;
 
   const educators = await prisma.educator.findMany({
@@ -111,14 +117,14 @@ async function ensureScheduleUpToDate(scheduleId: string): Promise<void> {
   try {
     const row = await prisma.employeeWeeklySchedule.findUnique({
       where: { id: scheduleId },
-      select: { parserVersion: true, rawPdfText: true },
+      select: { parserVersion: true, rawPdfBytes: true },
     });
     if (
       row &&
       row.parserVersion < SCHEDULE_PARSER_VERSION &&
-      row.rawPdfText?.trim()
+      row.rawPdfBytes?.length
     ) {
-      await refreshScheduleFromRawText(scheduleId);
+      await refreshScheduleFromStoredPdf(scheduleId);
     }
   } catch {
     /* colonnes schema absentes avant db push */
@@ -165,6 +171,7 @@ export async function replaceWeeklySchedule(options: {
   periodEnd: string;
   sourceFileName?: string;
   rawPdfText?: string;
+  rawPdfBytes?: Buffer;
   uploadedById: string;
   uploadedByName: string;
   entries: MatchedScheduleEntry[];
@@ -192,6 +199,7 @@ export async function replaceWeeklySchedule(options: {
         periodEnd,
         sourceFileName: options.sourceFileName?.trim() || null,
         rawPdfText: options.rawPdfText?.trim() || null,
+        rawPdfBytes: options.rawPdfBytes?.length ? options.rawPdfBytes : null,
         parserVersion: SCHEDULE_PARSER_VERSION,
         uploadedById: options.uploadedById,
         uploadedByName: options.uploadedByName,
