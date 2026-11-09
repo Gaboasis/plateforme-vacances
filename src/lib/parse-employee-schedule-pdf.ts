@@ -16,6 +16,8 @@ export type ParsedScheduleEmployee = {
   pdfName: string;
   roleLabel: string;
   days: ParsedScheduleDay[];
+  /** Segments « nom + rôle + cases » dans le flux texte PDF (sert à repérer les vendredis orphelins). */
+  parseSpans?: { roleLineIndex: number; blockEndIndex: number }[];
 };
 
 export type ParsedWeeklySchedule = {
@@ -402,10 +404,12 @@ function buildSchedulePdfEmployeeBody(fullText: string, periodStart: string, per
 }
 
 function nameTokenKey(pdfName: string): string {
-  const parts = normAscii(pdfName)
-    .split(/\s+/)
-    .filter(Boolean)
-    .filter((t) => t.length > 1);
+  const n = normAscii(pdfName).replace(/\s+/g, " ");
+  /** PDF : « Bachtaka Saliha » et « Jaouadi Samiha » = même personne. */
+  if (/(?:^|\s)(samiha|saliha)(?:\s|$)/.test(n)) {
+    return "profile:samiha";
+  }
+  const parts = n.split(/\s+/).filter((t) => t.length > 1);
   return Array.from(new Set(parts)).sort().join(" ");
 }
 
@@ -426,10 +430,100 @@ function dayMergePreference(d: ParsedScheduleDay): number {
   return 100;
 }
 
+function employeeNameMatchScore(cellLines: string[], pdfName: string): number {
+  const blob = normAscii(cellLines.join(" "));
+  const tokens = normAscii(pdfName)
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+  return tokens.filter((t) => blob.includes(t)).length;
+}
+
+/**
+ * Le PDF place souvent la case **vendredi** dans la zone de la collègue suivante.
+ * On récupère ces cases quand le nom apparaît entre parenthèses hors du bloc principal.
+ */
+function harvestOrphanFridayCells(
+  employees: ParsedScheduleEmployee[],
+  lines: string[]
+): void {
+  const fridayIdx = 4;
+  type Cand = {
+    emp: ParsedScheduleEmployee;
+    day: Omit<ParsedScheduleDay, "dayIndex" | "workDate">;
+    cellStart: number;
+    score: number;
+    pref: number;
+  };
+  const cands: Cand[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!isScheduleDayCellHeaderLine(lines[i]!)) continue;
+    const cellStart = i;
+    const { cell, nextIdx } = collectScheduleDayCell(lines, i);
+    const day = classifyDayCellByKeywords(cell);
+    if (day.kind === "unknown") {
+      i = nextIdx - 1;
+      continue;
+    }
+
+    for (const emp of employees) {
+      const spans = emp.parseSpans ?? [];
+      if (spans.length === 0) continue;
+      const inside = spans.some(
+        (s) => cellStart >= s.roleLineIndex && cellStart < s.blockEndIndex
+      );
+      if (inside) continue;
+      const score = employeeNameMatchScore(cell, emp.pdfName);
+      const blob = normAscii(cell.join(" "));
+      const distinctive = normAscii(emp.pdfName)
+        .split(/\s+/)
+        .filter((t) => t.length >= 5 && blob.includes(t)).length;
+      if (score < 2 && distinctive < 1) continue;
+      cands.push({
+        emp,
+        day,
+        cellStart,
+        score,
+        pref: dayMergePreference({
+          ...day,
+          dayIndex: fridayIdx,
+          workDate: "",
+        }),
+      });
+    }
+    i = nextIdx - 1;
+  }
+
+  const usedCell = new Set<number>();
+  for (const emp of employees) {
+    const fri = emp.days[fridayIdx];
+    if (!fri || fri.kind !== "unknown") continue;
+    const tok = nameTokenKey(emp.pdfName);
+    const mine = cands
+      .filter(
+        (c) =>
+          nameTokenKey(c.emp.pdfName) === tok && !usedCell.has(c.cellStart)
+      )
+      .sort((a, b) => b.pref - a.pref || b.score - a.score);
+    const pick = mine[0];
+    if (!pick) continue;
+    usedCell.add(pick.cellStart);
+    emp.days[fridayIdx] = {
+      ...fri,
+      ...pick.day,
+    };
+  }
+}
+
 function mergeParsedEmployees(employees: ParsedScheduleEmployee[]): ParsedScheduleEmployee[] {
   const byTok = new Map<
     string,
-    { roleLabel: string; pdfName: string; days: ParsedScheduleDay[] }
+    {
+      roleLabel: string;
+      pdfName: string;
+      days: ParsedScheduleDay[];
+      parseSpans?: { roleLineIndex: number; blockEndIndex: number }[];
+    }
   >();
 
   const workDaysCount = (days: ParsedScheduleDay[]) =>
@@ -444,6 +538,7 @@ function mergeParsedEmployees(employees: ParsedScheduleEmployee[]): ParsedSchedu
         roleLabel: emp.roleLabel,
         pdfName: emp.pdfName,
         days: emp.days.map((d) => ({ ...d })),
+        parseSpans: emp.parseSpans ? [...emp.parseSpans] : undefined,
       });
       continue;
     }
@@ -451,6 +546,9 @@ function mergeParsedEmployees(employees: ParsedScheduleEmployee[]): ParsedSchedu
     if (workDaysCount(emp.days) > workDaysCount(cur.days)) {
       cur.pdfName = emp.pdfName;
       cur.roleLabel = emp.roleLabel;
+    }
+    if (emp.parseSpans?.length) {
+      cur.parseSpans = [...(cur.parseSpans ?? []), ...emp.parseSpans];
     }
 
     for (let i = 0; i < emp.days.length; i++) {
@@ -597,7 +695,14 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
       });
     }
 
-    employees.push({ pdfName, roleLabel, days });
+    /** Ne pas étendre jusqu’au prochain « Éducatrice » (souvent page 2) : seulement les lignes des 5 jours. */
+    const blockEndIndex = j + 1 + i;
+    employees.push({
+      pdfName,
+      roleLabel,
+      days,
+      parseSpans: [{ roleLineIndex: j, blockEndIndex }],
+    });
 
     const mainNorm = normAscii(pdfName).replace(/\s+/g, " ");
     for (let d = 0; d < workDates.length; d++) {
@@ -630,6 +735,8 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
 
     j = nextRoleIdx;
   }
+
+  harvestOrphanFridayCells(employees, lines);
 
   return {
     periodStart,
