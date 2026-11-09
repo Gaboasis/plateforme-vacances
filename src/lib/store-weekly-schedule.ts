@@ -10,9 +10,14 @@ import {
 } from "./parse-employee-schedule-pdf";
 import type { ScheduleEntryRow } from "./heal-schedule-absence-travail";
 import { parseEmployeeSchedulePdfBuffer } from "./parse-employee-schedule-pdf-grid";
+import {
+  embedSchedulePdfInText,
+  extractSchedulePdfBuffer,
+  schedulePdfTextHint,
+} from "./schedule-pdf-storage";
 
 /** Incrémenter quand la logique d’interprétation du PDF horaire change. */
-export const SCHEDULE_PARSER_VERSION = 21;
+export const SCHEDULE_PARSER_VERSION = 22;
 
 function parseDateOnly(dateStr: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
@@ -48,14 +53,15 @@ async function refreshScheduleFromStoredPdf(scheduleId: string): Promise<void> {
   const row = await prisma.employeeWeeklySchedule.findUnique({
     where: { id: scheduleId },
   });
-  if (!row?.rawPdfBytes?.length) {
-    /* Sans le fichier PDF, le reparse texte dégrade les horaires (ex. Samiha, Shaimaa). */
-    return;
-  }
+  const pdfBuf = extractSchedulePdfBuffer({
+    rawPdfBytes: row?.rawPdfBytes,
+    rawPdfText: row?.rawPdfText,
+  });
+  if (!pdfBuf) return;
 
   const parsed = await parseEmployeeSchedulePdfBuffer(
-    Buffer.from(row.rawPdfBytes),
-    row.rawPdfText?.trim() ?? undefined
+    pdfBuf,
+    schedulePdfTextHint(row?.rawPdfText)
   );
   if (!parsed) return;
 
@@ -120,11 +126,7 @@ async function ensureScheduleUpToDate(scheduleId: string): Promise<void> {
       where: { id: scheduleId },
       select: { parserVersion: true, rawPdfBytes: true },
     });
-    if (
-      row &&
-      row.parserVersion < SCHEDULE_PARSER_VERSION &&
-      row.rawPdfBytes?.length
-    ) {
+    if (row && row.parserVersion < SCHEDULE_PARSER_VERSION) {
       await refreshScheduleFromStoredPdf(scheduleId);
     }
   } catch {
@@ -199,7 +201,10 @@ export async function replaceWeeklySchedule(options: {
         periodStart,
         periodEnd,
         sourceFileName: options.sourceFileName?.trim() || null,
-        rawPdfText: options.rawPdfText?.trim() || null,
+        rawPdfText:
+          options.rawPdfBytes?.length && options.rawPdfText
+            ? embedSchedulePdfInText(options.rawPdfText, options.rawPdfBytes)
+            : options.rawPdfText?.trim() || null,
         rawPdfBytes: options.rawPdfBytes?.length ? options.rawPdfBytes : null,
         parserVersion: SCHEDULE_PARSER_VERSION,
         uploadedById: options.uploadedById,
@@ -270,13 +275,13 @@ function timeToMinHm(t: string | null | undefined): number {
 }
 
 async function matchedWeekFromStoredPdf(
-  rawPdfBytes: Uint8Array,
+  pdfBuf: Buffer,
   rawPdfText: string | null | undefined,
   educators: { id: string; name: string }[]
 ) {
   const parsed = await parseEmployeeSchedulePdfBuffer(
-    Buffer.from(rawPdfBytes),
-    rawPdfText?.trim() || undefined
+    pdfBuf,
+    schedulePdfTextHint(rawPdfText)
   );
   if (!parsed) return null;
   return matchScheduleToEducators(parsed, educators);
@@ -427,13 +432,23 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
       select: { rawPdfBytes: true, rawPdfText: true },
     });
   } catch {
-    pdfRow = null;
+    pdfRow = await prisma.employeeWeeklySchedule.findUnique({
+      where: { id: scheduleRow.id },
+      select: { rawPdfText: true },
+    }).then((r) => (r ? { rawPdfBytes: null, rawPdfText: r.rawPdfText } : null));
   }
 
-  if (pdfRow?.rawPdfBytes?.length) {
+  const pdfBuf = pdfRow
+    ? extractSchedulePdfBuffer({
+        rawPdfBytes: pdfRow.rawPdfBytes,
+        rawPdfText: pdfRow.rawPdfText,
+      })
+    : null;
+
+  if (pdfBuf) {
     const matched = await matchedWeekFromStoredPdf(
-      pdfRow.rawPdfBytes,
-      pdfRow.rawPdfText,
+      pdfBuf,
+      pdfRow?.rawPdfText ?? null,
       eduList
     );
     if (matched) {
@@ -491,7 +506,7 @@ export async function getScheduleContextForDate(dateStr: string): Promise<{
 
   return {
     schedule: scheduleSummary,
-    needsPdfReupload: !pdfRow?.rawPdfBytes?.length,
+    needsPdfReupload: !pdfBuf,
     entries: dedupedRows.map((e) => {
       const kind = normalizeScheduleEntryKind(e, weekEntries);
       const resolved =
