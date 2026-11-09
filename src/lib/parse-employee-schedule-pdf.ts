@@ -438,6 +438,29 @@ function employeeNameMatchScore(cellLines: string[], pdfName: string): number {
   return tokens.filter((t) => blob.includes(t)).length;
 }
 
+/** Plage la plus fréquente sur les jours déjà lus (souvent le vrai vendredi oublié par le PDF). */
+function predominantWorkSlot(
+  days: ParsedScheduleDay[]
+): { start?: string; end?: string; count: number } {
+  const tally = new Map<string, number>();
+  for (const d of days) {
+    if (d.kind !== "work" || !d.expectedStart || !d.expectedEnd) continue;
+    const key = `${d.expectedStart}|${d.expectedEnd}`;
+    tally.set(key, (tally.get(key) ?? 0) + 1);
+  }
+  let bestKey = "";
+  let bestN = 0;
+  for (const [k, n] of Array.from(tally.entries())) {
+    if (n > bestN) {
+      bestN = n;
+      bestKey = k;
+    }
+  }
+  if (!bestKey || bestN < 2) return { count: bestN };
+  const [start, end] = bestKey.split("|");
+  return { start, end, count: bestN };
+}
+
 /**
  * Le PDF place souvent la case **vendredi** dans la zone de la collègue suivante.
  * On récupère ces cases quand le nom apparaît entre parenthèses hors du bloc principal.
@@ -499,18 +522,88 @@ function harvestOrphanFridayCells(
     const fri = emp.days[fridayIdx];
     if (!fri || fri.kind !== "unknown") continue;
     const tok = nameTokenKey(emp.pdfName);
+    const prior = emp.days.slice(0, fridayIdx);
+    const pred = predominantWorkSlot(prior);
+
     const mine = cands
       .filter(
         (c) =>
           nameTokenKey(c.emp.pdfName) === tok && !usedCell.has(c.cellStart)
       )
-      .sort((a, b) => b.pref - a.pref || b.score - a.score);
-    const pick = mine[0];
-    if (!pick) continue;
-    usedCell.add(pick.cellStart);
+      .sort((a, b) => {
+        const aFit =
+          pred.start &&
+          a.day.expectedStart === pred.start &&
+          a.day.expectedEnd === pred.end
+            ? 1
+            : 0;
+        const bFit =
+          pred.start &&
+          b.day.expectedStart === pred.start &&
+          b.day.expectedEnd === pred.end
+            ? 1
+            : 0;
+        return bFit - aFit || b.pref - a.pref || b.score - a.score;
+      });
+
+    let pick: Cand | undefined = mine[0];
+    const fitsPred = (day: Omit<ParsedScheduleDay, "dayIndex" | "workDate">) =>
+      pred.start &&
+      day.kind === "work" &&
+      day.expectedStart === pred.start &&
+      day.expectedEnd === pred.end;
+
+    if (pick && pick.day.kind === "work" && pred.start && !fitsPred(pick.day)) {
+      pick = undefined;
+    }
+
+    if (pick) {
+      usedCell.add(pick.cellStart);
+      emp.days[fridayIdx] = { ...fri, ...pick.day };
+      continue;
+    }
+
+    const workPrior = prior.filter((d) => d.kind === "work").length;
+    if (
+      pred.start &&
+      pred.end &&
+      pred.count >= 2 &&
+      workPrior >= 3
+    ) {
+      emp.days[fridayIdx] = {
+        ...fri,
+        kind: "work",
+        expectedStart: pred.start,
+        expectedEnd: pred.end,
+      };
+    }
+  }
+}
+
+/** Vendredis déjà remplis avec une case orpheline au mauvais horaire (ex. 08:30 ≠ majoritaire 07:00). */
+function reconcileFridayWithPredominantSlot(
+  employees: ParsedScheduleEmployee[]
+): void {
+  const fridayIdx = 4;
+  for (const emp of employees) {
+    const fri = emp.days[fridayIdx];
+    if (!fri || fri.kind !== "work" || !fri.expectedStart || !fri.expectedEnd) {
+      continue;
+    }
+    const prior = emp.days.slice(0, fridayIdx);
+    const pred = predominantWorkSlot(prior);
+    if (!pred.start || !pred.end || pred.count < 2) continue;
+    if (prior.filter((d) => d.kind === "work").length < 3) continue;
+    if (
+      fri.expectedStart === pred.start &&
+      fri.expectedEnd === pred.end
+    ) {
+      continue;
+    }
     emp.days[fridayIdx] = {
       ...fri,
-      ...pick.day,
+      expectedStart: pred.start,
+      expectedEnd: pred.end,
     };
   }
 }
@@ -737,12 +830,16 @@ export function parseEmployeeSchedulePdfText(text: string): ParsedWeeklySchedule
   }
 
   harvestOrphanFridayCells(employees, lines);
+  reconcileFridayWithPredominantSlot(employees);
+
+  const merged = mergeParsedEmployees(employees);
+  reconcileFridayWithPredominantSlot(merged);
 
   return {
     periodStart,
     periodEnd,
     workDates,
-    employees: mergeParsedEmployees(employees),
+    employees: merged,
   };
 }
 
