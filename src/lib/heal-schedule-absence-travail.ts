@@ -30,13 +30,6 @@ function isSamihaEntry(e: ScheduleEntryRow): boolean {
   );
 }
 
-function isKhiraEntry(e: ScheduleEntryRow): boolean {
-  return (
-    e.educatorId === "7" ||
-    /hemiss|om el khir|khir/i.test(e.pdfName)
-  );
-}
-
 function isKarimaEntry(e: ScheduleEntryRow): boolean {
   return (
     e.educatorId === "10" ||
@@ -67,25 +60,6 @@ export function isAbsenceTravailMisparseEntry(
     entry.expectedEnd === "17:30"
   ) {
     return true;
-  }
-
-  if (
-    isKhiraEntry(entry) &&
-    entry.expectedStart === "09:00" &&
-    entry.expectedEnd === "17:00"
-  ) {
-    const weekDates = weekdayDatesInSchedule(weekEntries);
-    const fourthDay = weekDates[3];
-    if (!fourthDay || dateToIso(entry.workDate) !== fourthDay) return false;
-
-    const khiraWork917 = weekEntries.filter(
-      (e) =>
-        isKhiraEntry(e) &&
-        e.kind === "work" &&
-        e.expectedStart === "09:00" &&
-        e.expectedEnd === "17:00"
-    );
-    return khiraWork917.length >= 4;
   }
 
   if (

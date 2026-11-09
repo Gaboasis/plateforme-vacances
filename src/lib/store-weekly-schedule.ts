@@ -11,7 +11,7 @@ import {
 } from "./parse-employee-schedule-pdf";
 
 /** Incrémenter quand la logique d’interprétation du PDF horaire change. */
-export const SCHEDULE_PARSER_VERSION = 14;
+export const SCHEDULE_PARSER_VERSION = 15;
 
 function parseDateOnly(dateStr: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
