@@ -184,14 +184,14 @@ export interface DayOffSwapRequest {
   id: string;
   requesterId: string;
   requesterName: string;
-  /** true = demande d’une qualifiée (réservée aux qualifiées) ; false = non qualifiée (tout le monde peut voir / accepter selon le mode) */
+  /** true = demande d’une qualifiée ; une non qualifiée peut accepter, avec validation admin du ratio */
   requesterIsQualified: boolean;
   /** 1 = lundi … 7 = dimanche (ISO) */
   requesterOffDay: number;
   mode: "open" | "targeted";
   targetEducatorId?: string;
   targetEducatorName?: string;
-  status: "pending" | "confirmed" | "cancelled";
+  status: "pending" | "pending_admin" | "confirmed" | "cancelled";
   acceptedById?: string;
   acceptedByName?: string;
   counterpartyOffDay?: number;

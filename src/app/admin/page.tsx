@@ -599,6 +599,62 @@ export default function AdminPage() {
     }
   };
 
+  const handleApproveDayOffSwap = async (swapId: string) => {
+    const actor = getStaffActorId();
+    if (!actor) {
+      alert("Session introuvable. Reconnectez-vous.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Valider définitivement cet échange après vérification du ratio qualifiées / non qualifiées ?"
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/day-off-swaps/${swapId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "approve", actorEducatorId: actor }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setDayOffSwaps((prev) =>
+        prev.map((s) => (s.id === swapId ? (data as DayOffSwapRequest) : s))
+      );
+    } else {
+      alert(typeof data.error === "string" ? data.error : "Validation impossible");
+    }
+  };
+
+  const handleRejectDayOffSwapAdmin = async (swapId: string) => {
+    const actor = getStaffActorId();
+    if (!actor) {
+      alert("Session introuvable. Reconnectez-vous.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Refuser cette acceptation et remettre la demande en attente d’une autre collègue ?"
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/day-off-swaps/${swapId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reject", actorEducatorId: actor }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setDayOffSwaps((prev) =>
+        prev.map((s) => (s.id === swapId ? (data as DayOffSwapRequest) : s))
+      );
+    } else {
+      alert(typeof data.error === "string" ? data.error : "Refus impossible");
+    }
+  };
+
   const handleDeleteDayOffSwapPermanently = async (swapId: string) => {
     const admin = getAdminFromSession();
     if (!admin) {
@@ -774,6 +830,9 @@ export default function AdminPage() {
   const requestsExcludingDemo = requests.filter((r) => !isDemoEducatorId(r.educatorId));
 
   const pendingCount = requestsExcludingDemo.filter((r) => r.status === "pending").length;
+  const dayOffSwapPendingAdminCount = dayOffSwaps.filter(
+    (s) => s.status === "pending_admin"
+  ).length;
   const appealPendingCount = requestsExcludingDemo.filter(
     (r) =>
       r.status === "rejected" &&
@@ -904,6 +963,11 @@ export default function AdminPage() {
         >
           <ArrowLeftRight className="h-4 w-4" />
           Échanges jour ({dayOffSwaps.length})
+          {dayOffSwapPendingAdminCount > 0 && (
+            <span className="ml-1 rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-medium text-white">
+              {dayOffSwapPendingAdminCount} à valider
+            </span>
+          )}
         </button>
         {!inboxOnly && (
         <button
@@ -1350,9 +1414,10 @@ export default function AdminPage() {
       {activeTab === "dayoff" && (
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            Demandes d&apos;échange de journée de congé entre éducatrices. Les
-            lignes confirmées correspondent à un accord enregistré sur la
-            plateforme (à reporter dans la planification réelle si besoin).
+            Demandes d&apos;échange de journée de congé entre éducatrices. Si
+            une qualifiée est acceptée par une non qualifiée, validez le ratio
+            avant confirmation. Les lignes confirmées correspondent à un accord
+            enregistré (à reporter dans la planification réelle si besoin).
           </p>
           {dayOffSwaps.length === 0 ? (
             <div className="card text-center py-16">
@@ -1370,11 +1435,7 @@ export default function AdminPage() {
                     <th className="px-3 py-3 sm:px-4">Mode</th>
                     <th className="px-3 py-3 sm:px-4">Statut</th>
                     <th className="px-3 py-3 sm:px-4">Échange</th>
-                    <th
-                      className={`px-3 py-3 sm:px-4 w-32 ${inboxOnly ? "hidden" : ""}`}
-                    >
-                      Actions
-                    </th>
+                    <th className="px-3 py-3 sm:px-4 w-32">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1405,6 +1466,11 @@ export default function AdminPage() {
                             En attente
                           </span>
                         )}
+                        {s.status === "pending_admin" && (
+                          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-900">
+                            À valider (ratio)
+                          </span>
+                        )}
                         {s.status === "confirmed" && (
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-900">
                             Confirmé
@@ -1417,7 +1483,15 @@ export default function AdminPage() {
                         )}
                       </td>
                       <td className="px-3 py-3 sm:px-4 text-slate-700">
-                        {s.status === "confirmed" && s.acceptedByName ? (
+                        {s.status === "pending_admin" && s.acceptedByName ? (
+                          <span>
+                            {s.acceptedByName} a accepté (
+                            {s.counterpartyOffDay != null
+                              ? isoWeekdayLabel(s.counterpartyOffDay)
+                              : "—"}
+                            ) — validation requise
+                          </span>
+                        ) : s.status === "confirmed" && s.acceptedByName ? (
                           <span>
                             {s.requesterName} ({isoWeekdayLabel(s.requesterOffDay)}
                             ) ↔ {s.acceptedByName} (
@@ -1435,19 +1509,45 @@ export default function AdminPage() {
                           </span>
                         ) : null}
                       </td>
-                      <td
-                        className={`px-3 py-3 sm:px-4 align-middle ${inboxOnly ? "hidden" : ""}`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteDayOffSwapPermanently(s.id)
-                          }
-                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-100 touch-manipulation whitespace-nowrap"
-                        >
-                          <Trash2 className="h-3.5 w-3.5 shrink-0" />
-                          Supprimer
-                        </button>
+                      <td className="px-3 py-3 sm:px-4 align-middle">
+                        <div className="flex flex-col gap-1.5">
+                          {s.status === "pending_admin" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApproveDayOffSwap(s.id)}
+                                className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-900 hover:bg-emerald-100 touch-manipulation whitespace-nowrap"
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+                                Valider
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleRejectDayOffSwapAdmin(s.id)
+                                }
+                                className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 touch-manipulation whitespace-nowrap"
+                              >
+                                <XCircle className="h-3.5 w-3.5 shrink-0" />
+                                Refuser
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                          {!inboxOnly ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDeleteDayOffSwapPermanently(s.id)
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-100 touch-manipulation whitespace-nowrap"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                              Supprimer
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))}

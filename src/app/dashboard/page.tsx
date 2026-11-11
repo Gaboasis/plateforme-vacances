@@ -484,7 +484,7 @@ export default function DashboardPage() {
           ? "Votre demande a été envoyée à Loubaba. Dès qu’elle acceptera, l’échange sera confirmé."
           : swapForm.mode === "open"
             ? requesterIsQualified
-              ? "Votre demande a été envoyée aux seules éducatrices qualifiées. La première qui accepte confirmera l’échange."
+              ? "Votre demande a été envoyée à toutes les collègues. Si une non qualifiée accepte, l’administration validera l’échange avant confirmation."
               : "Votre demande a été envoyée à toutes les collègues éducatrices. La première qui accepte confirmera l’échange."
             : "Votre collègue a été notifiée. Dès qu’elle acceptera, l’échange sera confirmé."
       );
@@ -525,9 +525,15 @@ export default function DashboardPage() {
         loadSwaps(user.id, user.role);
         return;
       }
-      setSwapSuccess(
-        `Échange confirmé avec ${swap.requesterName}. L’administration et votre collègue sont informées.`
-      );
+      if (data.status === "pending_admin") {
+        setSwapSuccess(
+          `Acceptation enregistrée. L’administration doit valider le ratio qualifiées / non qualifiées avant que ${swap.requesterName} ne voie l’échange confirmé.`
+        );
+      } else {
+        setSwapSuccess(
+          `Échange confirmé avec ${swap.requesterName}. L’administration et votre collègue sont informées.`
+        );
+      }
       loadSwaps(user.id, user.role);
       setTimeout(() => setSwapSuccess(""), 10000);
     } catch {
@@ -651,7 +657,7 @@ export default function DashboardPage() {
                 <strong>{isoWeekdayLabel(s.requesterOffDay)}</strong>
                 {s.mode === "open"
                   ? s.requesterIsQualified
-                    ? ") : la première éducatrice qualifiée qui accepte confirme l’échange."
+                    ? ") : vous pouvez accepter ; si vous n’êtes pas qualifiée, l’administration validera avant confirmation."
                     : ") : la première collègue éducatrice qui accepte confirme l’échange."
                   : ") avec vous (demande directe)."}
               </p>
@@ -784,10 +790,11 @@ export default function DashboardPage() {
               </>
             ) : requesterIsQualified ? (
               <>
-                En tant qu’éducatrice <strong>qualifiée</strong>, vos demandes
-                (ouverte ou directe) ne concernent que les collègues{" "}
-                <strong>également qualifiées</strong>. Une demande ouverte n’est
-                visible que par elles.
+                En tant qu’éducatrice <strong>qualifiée</strong>, une demande
+                ouverte est visible par <strong>toutes</strong> les collègues.
+                Une demande directe reste adressée à une éducatrice{" "}
+                <strong>qualifiée</strong>. Si une non qualifiée accepte,{" "}
+                l’administration valide le ratio avant confirmation finale.
               </>
             ) : (
               <>
@@ -823,7 +830,7 @@ export default function DashboardPage() {
                   <span className="text-sm text-slate-700">
                     <strong>Toutes les collègues</strong> —{" "}
                     {requesterIsQualified
-                      ? "votre demande n’est visible que par les éducatrices qualifiées ; la première qui accepte confirme l’échange."
+                      ? "votre demande est visible par toutes les éducatrices ; si une non qualifiée accepte, validation admin requise."
                       : "votre demande est visible par toutes les éducatrices ; la première qui accepte confirme l’échange."}
                   </span>
                 </label>
@@ -1196,6 +1203,13 @@ export default function DashboardPage() {
                       ? " (demande ouverte à toutes les collègues)."
                       : ` avec ${s.targetEducatorName ?? "une collègue"}.`}
                   </p>
+                  {s.status === "pending_admin" ? (
+                    <p className="mt-2 text-sm font-medium text-indigo-800">
+                      {s.acceptedByName ?? "Une collègue"} a accepté — en
+                      attente de validation par l’administration (ratio
+                      qualifiées / non qualifiées).
+                    </p>
+                  ) : null}
                   {s.message ? (
                     <p className="mt-2 text-sm text-slate-600">{s.message}</p>
                   ) : null}

@@ -7,6 +7,7 @@ import type {
   VacationRules,
 } from "@/types";
 import { DEMO_EDUCATOR_ID } from "./demo-educator";
+import { checkDayOffSwapRatio } from "./day-off-swap-capacity";
 import { prisma } from "./db";
 
 function educatorToType(edu: {
@@ -534,7 +535,10 @@ export async function getPendingSwapByRequester(
   requesterId: string
 ): Promise<DayOffSwapRequest | null> {
   const row = await prisma.dayOffSwapRequest.findFirst({
-    where: { requesterId, status: "pending" },
+    where: {
+      requesterId,
+      status: { in: ["pending", "pending_admin"] },
+    },
     orderBy: { createdAt: "desc" },
   });
   return row ? dayOffSwapToType(row) : null;
@@ -596,12 +600,13 @@ export async function getDayOffSwapDashboard(educatorId: string): Promise<{
     if (s.mode === "open" && s.requesterId === educatorId) return false;
     if (s.mode === "targeted" && s.targetEducatorId !== educatorId) return false;
     if (!(s.mode === "open" || s.mode === "targeted")) return false;
-    if (s.requesterIsQualified && !viewerQualified) return false;
     return true;
   });
 
   const outgoing = typed.filter(
-    (s) => s.status === "pending" && s.requesterId === educatorId
+    (s) =>
+      (s.status === "pending" || s.status === "pending_admin") &&
+      s.requesterId === educatorId
   );
 
   const history = typed.filter(
@@ -655,24 +660,18 @@ export async function acceptDayOffSwap(params: {
     }
   }
 
-  if (swap.requesterIsQualified) {
-    const accepterRow = await prisma.educator.findUnique({
-      where: { id: params.accepterId },
-      select: { isQualified: true },
-    });
-    if (accepterRow?.isQualified !== true) {
-      return {
-        ok: false,
-        error:
-          "Cette demande est réservée aux éducatrices qualifiées. Seule une collègue qualifiée peut accepter.",
-      };
-    }
-  }
+  const accepterRow = await prisma.educator.findUnique({
+    where: { id: params.accepterId },
+    select: { isQualified: true },
+  });
+  const accepterQualified = accepterRow?.isQualified === true;
+  const needsAdminApproval =
+    swap.requesterIsQualified && accepterQualified !== true;
 
   const updated = await prisma.dayOffSwapRequest.updateMany({
     where: { id: params.swapId, status: "pending" },
     data: {
-      status: "confirmed",
+      status: needsAdminApproval ? "pending_admin" : "confirmed",
       acceptedById: params.accepterId,
       acceptedByName: params.accepterName,
       counterpartyOffDay: params.counterpartyOffDay,
@@ -705,12 +704,91 @@ export async function cancelDayOffSwap(
   if (swap.requesterId !== requesterId) {
     return { ok: false, error: "Seule la personne qui a fait la demande peut l’annuler." };
   }
-  if (swap.status !== "pending") {
+  if (swap.status !== "pending" && swap.status !== "pending_admin") {
     return { ok: false, error: "Cette demande n’est plus en attente." };
   }
   const row = await prisma.dayOffSwapRequest.update({
     where: { id: swapId },
     data: { status: "cancelled" },
+  });
+  return { ok: true, swap: dayOffSwapToType(row) };
+}
+
+export async function approveDayOffSwap(
+  swapId: string
+): Promise<
+  | { ok: true; swap: DayOffSwapRequest; ratioMessage: string }
+  | { ok: false; error: string }
+> {
+  const swap = await prisma.dayOffSwapRequest.findUnique({
+    where: { id: swapId },
+  });
+  if (!swap || swap.status !== "pending_admin") {
+    return {
+      ok: false,
+      error: "Demande introuvable ou non en attente de validation admin.",
+    };
+  }
+  if (
+    !swap.acceptedById ||
+    swap.counterpartyOffDay == null
+  ) {
+    return { ok: false, error: "Demande incomplète (acceptation manquante)." };
+  }
+
+  const [educators, rules, allRequests] = await Promise.all([
+    getEducators(),
+    getVacationRules(),
+    getVacationRequests(),
+  ]);
+  const acceptedRequests = allRequests.filter((r) => r.status === "accepted");
+  const accepter = educators.find((e) => e.id === swap.acceptedById);
+
+  const ratio = checkDayOffSwapRatio(
+    {
+      requesterId: swap.requesterId,
+      requesterIsQualified: swap.requesterIsQualified,
+      requesterOffDay: swap.requesterOffDay,
+      accepterId: swap.acceptedById,
+      accepterIsQualified: accepter?.isQualified === true,
+      counterpartyOffDay: swap.counterpartyOffDay,
+    },
+    rules,
+    acceptedRequests,
+    educators
+  );
+  if (!ratio.ok) {
+    return { ok: false, error: ratio.message };
+  }
+
+  const row = await prisma.dayOffSwapRequest.update({
+    where: { id: swapId },
+    data: { status: "confirmed" },
+  });
+  return { ok: true, swap: dayOffSwapToType(row), ratioMessage: ratio.message };
+}
+
+export async function rejectDayOffSwapAdmin(
+  swapId: string
+): Promise<{ ok: true; swap: DayOffSwapRequest } | { ok: false; error: string }> {
+  const swap = await prisma.dayOffSwapRequest.findUnique({
+    where: { id: swapId },
+  });
+  if (!swap || swap.status !== "pending_admin") {
+    return {
+      ok: false,
+      error: "Demande introuvable ou non en attente de validation admin.",
+    };
+  }
+  const row = await prisma.dayOffSwapRequest.update({
+    where: { id: swapId },
+    data: {
+      status: "pending",
+      acceptedById: null,
+      acceptedByName: null,
+      counterpartyOffDay: null,
+      acceptedAt: null,
+    },
   });
   return { ok: true, swap: dayOffSwapToType(row) };
 }

@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   acceptDayOffSwap,
+  approveDayOffSwap,
   AUDIT_ACTIONS,
   cancelDayOffSwap,
   createAuditLog,
   deleteDayOffSwapRequest,
   getDayOffSwapRequestById,
   getEducators,
+  rejectDayOffSwapAdmin,
 } from "@/lib/store";
 import { getClientIp, getUserAgent } from "@/lib/audit-context";
 import { isoWeekdayLabel } from "@/lib/weekday-fr";
 import { isKamarSecretaryForSwap } from "@/lib/kamar-loubaba-swap";
+import { findStaffInboxActor } from "@/lib/staff-actor";
 
 function validIsoDay(n: number) {
   return Number.isInteger(n) && n >= 1 && n <= 7;
@@ -23,7 +26,66 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { action, educatorId, educatorName, counterpartyOffDay } = body;
+    const {
+      action,
+      educatorId,
+      educatorName,
+      counterpartyOffDay,
+      adminId,
+      actorEducatorId,
+    } = body;
+
+    if (action === "approve" || action === "reject") {
+      const aid = String(
+        actorEducatorId ?? adminId ?? educatorId ?? ""
+      ).trim();
+      if (!aid) {
+        return NextResponse.json(
+          { error: "Profil requis (administration ou bureau)." },
+          { status: 400 }
+        );
+      }
+      const educators = await getEducators();
+      const staffActor = findStaffInboxActor(educators, aid);
+      if (!staffActor) {
+        return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
+      }
+      if (action === "approve") {
+        const result = await approveDayOffSwap(id);
+        if (!result.ok) {
+          return NextResponse.json({ error: result.error }, { status: 400 });
+        }
+        const s = result.swap;
+        try {
+          await createAuditLog({
+            educatorId: staffActor.id,
+            educatorName: staffActor.name,
+            action: AUDIT_ACTIONS.DAY_OFF_SWAP_CONFIRMED,
+            resourceType: "DayOffSwapRequest",
+            resourceId: s.id,
+            detail: JSON.stringify({
+              approvedByStaff: true,
+              approvedBy: staffActor.name,
+              requester: s.requesterName,
+              requesterDay: isoWeekdayLabel(s.requesterOffDay),
+              counterparty: s.acceptedByName,
+              counterpartyDay: isoWeekdayLabel(s.counterpartyOffDay ?? 0),
+              ratio: result.ratioMessage,
+            }),
+            ip: getClientIp(request),
+            userAgent: getUserAgent(request),
+          });
+        } catch (err) {
+          console.error("Day-off swap admin approve audit failed:", err);
+        }
+        return NextResponse.json(result.swap);
+      }
+      const result = await rejectDayOffSwapAdmin(id);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json(result.swap);
+    }
 
     if (!educatorId || !educatorName) {
       return NextResponse.json({ error: "Profil requis" }, { status: 400 });
@@ -75,26 +137,28 @@ export async function PATCH(
     }
 
     const s = result.swap;
-    try {
-      await createAuditLog({
-        educatorId: s.requesterId,
-        educatorName: s.requesterName,
-        action: AUDIT_ACTIONS.DAY_OFF_SWAP_CONFIRMED,
-        resourceType: "DayOffSwapRequest",
-        resourceId: s.id,
-        detail: JSON.stringify({
-          requester: s.requesterName,
-          requesterDay: isoWeekdayLabel(s.requesterOffDay),
-          requesterQualified: s.requesterIsQualified,
-          counterparty: s.acceptedByName,
-          counterpartyDay: isoWeekdayLabel(s.counterpartyOffDay ?? dayNum),
-          mode: s.mode,
-        }),
-        ip: getClientIp(request),
-        userAgent: getUserAgent(request),
-      });
-    } catch (err) {
-      console.error("Day-off swap audit failed:", err);
+    if (s.status === "confirmed") {
+      try {
+        await createAuditLog({
+          educatorId: s.requesterId,
+          educatorName: s.requesterName,
+          action: AUDIT_ACTIONS.DAY_OFF_SWAP_CONFIRMED,
+          resourceType: "DayOffSwapRequest",
+          resourceId: s.id,
+          detail: JSON.stringify({
+            requester: s.requesterName,
+            requesterDay: isoWeekdayLabel(s.requesterOffDay),
+            requesterQualified: s.requesterIsQualified,
+            counterparty: s.acceptedByName,
+            counterpartyDay: isoWeekdayLabel(s.counterpartyOffDay ?? dayNum),
+            mode: s.mode,
+          }),
+          ip: getClientIp(request),
+          userAgent: getUserAgent(request),
+        });
+      } catch (err) {
+        console.error("Day-off swap audit failed:", err);
+      }
     }
 
     return NextResponse.json(result.swap);

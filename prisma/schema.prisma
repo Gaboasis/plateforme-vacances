@@ -206,7 +206,7 @@ model DayOffSwapRequest {
   targetEducatorId    String?
   targetEducatorName  String?
 
-  status              String    // "pending" | "confirmed" | "cancelled"
+  status              String    // "pending" | "pending_admin" | "confirmed" | "cancelled"
   acceptedById        String?
   acceptedByName      String?
   counterpartyOffDay  Int?      // jour de congé de la collègue qui accepte
