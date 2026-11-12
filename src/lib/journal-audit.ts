@@ -34,6 +34,8 @@ type ComparableLine = {
   employerContributionPercent: number | null;
   clockIn: string | null;
   clockOut: string | null;
+  note: string;
+  sourceName: string;
 };
 
 export type AccountingAuditDetail = {
@@ -76,6 +78,9 @@ const FIELD_LABELS: Record<string, string> = {
   dailyRateCents: "Tarif journalier",
   employerContributionPercent: "Cotisations employeur (%)",
   label: "Libellé",
+  note: "Note (ligne)",
+  sourceName: "Fournisseur / source",
+  notes: "Notes du journal",
 };
 
 function normClockForAudit(value: string | null | undefined): string | null {
@@ -144,6 +149,8 @@ function toComparable(
     employerContributionPercent: line.employerContributionPercent ?? null,
     clockIn: normClockForAudit(line.clockIn ?? undefined),
     clockOut: normClockForAudit(line.clockOut ?? undefined),
+    note: (line.note ?? "").trim(),
+    sourceName: (line.sourceName ?? "").trim(),
   };
 }
 
@@ -175,6 +182,8 @@ function diffLines(
     "dailyRateCents",
     "employerContributionPercent",
     "label",
+    "note",
+    "sourceName",
   ];
   const changes: NonNullable<AccountingAuditDetail["changes"]> = [];
   for (const field of fields) {
@@ -228,7 +237,42 @@ async function writeAuditEntry(
   });
 }
 
-/** Enregistre une entrée d'audit par ligne modifiée, ajoutée ou supprimée (pas la première saisie du jour). */
+async function recordJournalNotesChange(
+  dateStr: string,
+  beforeNotes: string,
+  afterNotes: string,
+  actorId: string,
+  actorName: string,
+  journalId: string,
+  ip?: string,
+  userAgent?: string
+) {
+  if (beforeNotes === afterNotes) return;
+  await writeAuditEntry(
+    {
+      journalDate: dateStr,
+      changeType: "modified",
+      lineSummary: "Notes du journal",
+      changes: [
+        {
+          field: "notes",
+          fieldLabel: FIELD_LABELS.notes ?? "Notes du journal",
+          before: beforeNotes || null,
+          after: afterNotes || null,
+          beforeDisplay: beforeNotes || "—",
+          afterDisplay: afterNotes || "—",
+        },
+      ],
+    },
+    actorId,
+    actorName,
+    journalId,
+    ip,
+    userAgent
+  );
+}
+
+/** Enregistre une entrée d'audit par ligne modifiée, ajoutée ou supprimée (y compris première saisie du jour). */
 export async function recordAccountingJournalSaveAudit(options: {
   dateStr: string;
   before: DailyJournal | null;
@@ -239,9 +283,59 @@ export async function recordAccountingJournalSaveAudit(options: {
   userAgent?: string;
 }): Promise<void> {
   const { dateStr, before, after, actorId, actorName, ip, userAgent } = options;
+
+  const afterNotes = (after.notes ?? "").trim();
+
   if (!before) {
+    for (const line of after.lines) {
+      const newLine = toComparable(line);
+      await writeAuditEntry(
+        {
+          journalDate: dateStr,
+          changeType: "added",
+          lineSummary: buildLineSummary(newLine),
+          snapshot: {
+            amountCents: newLine.amountCents,
+            hoursWorked: newLine.hoursWorked,
+            hourlyRateCents: newLine.hourlyRateCents,
+            childCount: newLine.childCount,
+            clockIn: newLine.clockIn,
+            clockOut: newLine.clockOut,
+          },
+        },
+        actorId,
+        actorName,
+        after.id,
+        ip,
+        userAgent
+      );
+    }
+    if (afterNotes) {
+      await recordJournalNotesChange(
+        dateStr,
+        "",
+        afterNotes,
+        actorId,
+        actorName,
+        after.id,
+        ip,
+        userAgent
+      );
+    }
     return;
   }
+
+  const beforeNotes = (before.notes ?? "").trim();
+  await recordJournalNotesChange(
+    dateStr,
+    beforeNotes,
+    afterNotes,
+    actorId,
+    actorName,
+    after.id,
+    ip,
+    userAgent
+  );
 
   const beforeMap = new Map(
     before.lines.map((l) => [toComparable(l).fingerprint, toComparable(l)])
@@ -315,6 +409,54 @@ export async function recordAccountingJournalSaveAudit(options: {
       userAgent
     );
   }
+}
+
+/** Dépenses fixes (hors lignes du journal) — affichées à la compta du jour. */
+export async function recordAccountingFixedExpenseAudit(options: {
+  journalDate: string;
+  changeType: "added" | "removed";
+  label: string;
+  amountCents: number;
+  sourceName?: string;
+  note?: string;
+  actorId: string;
+  actorName: string;
+  resourceId?: string | null;
+  ip?: string;
+  userAgent?: string;
+}): Promise<void> {
+  const who = options.sourceName?.trim();
+  const extra = options.note?.trim();
+  const lineSummary = `Dépense fixe : ${options.label}${who ? ` (${who})` : ""}`;
+  const snapshot = {
+    amountCents: options.amountCents,
+  };
+  await writeAuditEntry(
+    {
+      journalDate: options.journalDate,
+      changeType: options.changeType,
+      lineSummary,
+      snapshot,
+      changes:
+        options.changeType === "added" && extra
+          ? [
+              {
+                field: "note",
+                fieldLabel: FIELD_LABELS.note ?? "Note",
+                before: null,
+                after: extra,
+                beforeDisplay: "—",
+                afterDisplay: extra,
+              },
+            ]
+          : undefined,
+    },
+    options.actorId,
+    options.actorName,
+    options.resourceId ?? null,
+    options.ip,
+    options.userAgent
+  );
 }
 
 export async function recordAccountingJournalDeleteAudit(options: {

@@ -79,6 +79,7 @@ export default function AdminPage() {
   >([]);
   const [loginLogs, setLoginLogs] = useState<ActivityAuditLogEntry[]>([]);
   const [dayOffSwaps, setDayOffSwaps] = useState<DayOffSwapRequest[]>([]);
+  const [comptaTraceJournalFilter, setComptaTraceJournalFilter] = useState("");
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
   const [expandedLoginId, setExpandedLoginId] = useState<string | null>(null);
   const [newBlackoutDate, setNewBlackoutDate] = useState("");
@@ -833,6 +834,14 @@ export default function AdminPage() {
   const dayOffSwapPendingAdminCount = dayOffSwaps.filter(
     (s) => s.status === "pending_admin"
   ).length;
+
+  const accountingAuditLogsFiltered = accountingAuditLogs.filter((row) => {
+    const q = comptaTraceJournalFilter.trim();
+    if (!q) return true;
+    const parsed = parseAccountingAuditDetail(row.detail);
+  const day = parsed?.journalDate ?? "";
+    return day.includes(q) || row.educatorName.toLowerCase().includes(q.toLowerCase());
+  });
   const appealPendingCount = requestsExcludingDemo.filter(
     (r) =>
       r.status === "rejected" &&
@@ -1677,24 +1686,36 @@ export default function AdminPage() {
       {activeTab === "accountingAudit" && (
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            Une ligne apparaît ici seulement lorsqu&apos;une journée comptable{" "}
-            <strong>déjà enregistrée</strong> est modifiée, qu&apos;une ligne est
-            ajoutée ou supprimée, ou qu&apos;un admin supprime une journée. La
-            première saisie d&apos;un jour n&apos;est pas listée. Les changements
-            (dont <strong>heures d&apos;entrée et de sortie</strong> après import
-            PDF ou correction manuelle) sont comparés avant / après enregistrement.
+            Historique des modifications comptables : lignes du journal (ajout,
+            suppression, montants, inscriptions, pointage, notes),{" "}
+            <strong>dépenses fixes</strong> du jour, notes du journal, et
+            suppression d&apos;une journée par l&apos;admin. La colonne{" "}
+            <strong>Journée</strong> est la date comptable touchée (ex. 16 oct.) ;
+            <strong> Date / heure</strong> est le moment où Kamar ou l&apos;admin a
+            enregistré.
           </p>
+          {accountingAuditLogs.length > 0 ? (
+            <label className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+              <span className="text-slate-600 shrink-0">Filtrer (jour AAAA-MM-JJ ou nom) :</span>
+              <input
+                type="search"
+                className="input-field max-w-xs"
+                placeholder="ex. 2025-10-16 ou Kamar"
+                value={comptaTraceJournalFilter}
+                onChange={(e) => setComptaTraceJournalFilter(e.target.value)}
+              />
+            </label>
+          ) : null}
           {accountingAuditLogs.length === 0 ? (
             <div className="card text-center py-16">
               <Wallet className="mx-auto h-14 w-14 text-slate-300" />
               <p className="mt-4 text-slate-600">
                 Aucune modification comptable enregistrée pour le moment
               </p>
-              <p className="mt-2 text-xs text-slate-500 max-w-md mx-auto">
-                L&apos;historique commence à partir du prochain déploiement. Les
-                changements faits avant cette mise à jour ne peuvent pas être
-                reconstitués.
-              </p>
+            </div>
+          ) : accountingAuditLogsFiltered.length === 0 ? (
+            <div className="card text-center py-10">
+              <p className="text-slate-600">Aucun résultat pour ce filtre.</p>
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -1712,7 +1733,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {accountingAuditLogs.map((row) => {
+                  {accountingAuditLogsFiltered.map((row) => {
                     const parsed = parseAccountingAuditDetail(row.detail);
                     return (
                       <tr key={row.id} className="align-top hover:bg-slate-50/80">

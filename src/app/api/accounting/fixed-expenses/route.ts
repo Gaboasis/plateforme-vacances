@@ -12,6 +12,8 @@ import {
 import { getEducators } from "@/lib/store";
 import { assertCanEditLockedJournalDay } from "@/lib/verify-journal-day-edit";
 import { prisma } from "@/lib/db";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
+import { recordAccountingFixedExpenseAudit } from "@/lib/journal-audit";
 
 async function requireActor(actorId: string | undefined) {
   const educators = await getEducators();
@@ -64,7 +66,8 @@ export async function POST(request: NextRequest) {
       typeof body._actorEducatorId === "string"
         ? body._actorEducatorId.trim()
         : "";
-    if (!(await requireActor(actorId))) {
+    const actor = await requireActor(actorId);
+    if (!actor) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
     }
 
@@ -116,6 +119,27 @@ export async function POST(request: NextRequest) {
         coverageStart,
         coverageEnd,
       });
+      const ip = getClientIp(request) ?? undefined;
+      const userAgent = getUserAgent(request) ?? undefined;
+      for (const item of created) {
+        try {
+          await recordAccountingFixedExpenseAudit({
+            journalDate: item.periodStart,
+            changeType: "added",
+            label: item.label,
+            amountCents: item.amountCents,
+            sourceName: item.sourceName ?? undefined,
+            note: item.note ?? undefined,
+            actorId: actor.id,
+            actorName: actor.name,
+            resourceId: item.id,
+            ip,
+            userAgent,
+          });
+        } catch (e) {
+          console.error("Audit compta (dépense fixe):", e);
+        }
+      }
       return NextResponse.json(
         { items: created, split: created.length > 1 },
         { status: 201 }
@@ -135,6 +159,27 @@ export async function POST(request: NextRequest) {
         note: body.note,
         allocateToMonths: months,
       });
+      const ip = getClientIp(request) ?? undefined;
+      const userAgent = getUserAgent(request) ?? undefined;
+      for (const item of created) {
+        try {
+          await recordAccountingFixedExpenseAudit({
+            journalDate: item.periodStart,
+            changeType: "added",
+            label: item.label,
+            amountCents: item.amountCents,
+            sourceName: item.sourceName ?? undefined,
+            note: item.note ?? undefined,
+            actorId: actor.id,
+            actorName: actor.name,
+            resourceId: item.id,
+            ip,
+            userAgent,
+          });
+        } catch (e) {
+          console.error("Audit compta (dépense fixe):", e);
+        }
+      }
       return NextResponse.json({ items: created, split: true }, { status: 201 });
     }
 
@@ -148,6 +193,23 @@ export async function POST(request: NextRequest) {
       invoiceDate:
         periodStart === periodEnd ? invoiceDate : undefined,
     });
+    try {
+      await recordAccountingFixedExpenseAudit({
+        journalDate: invoiceDate,
+        changeType: "added",
+        label: created.label,
+        amountCents: created.amountCents,
+        sourceName: created.sourceName ?? undefined,
+        note: created.note ?? undefined,
+        actorId: actor.id,
+        actorName: actor.name,
+        resourceId: created.id,
+        ip: getClientIp(request) ?? undefined,
+        userAgent: getUserAgent(request) ?? undefined,
+      });
+    } catch (e) {
+      console.error("Audit compta (dépense fixe):", e);
+    }
     return NextResponse.json(created, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur serveur";
@@ -166,7 +228,8 @@ export async function DELETE(request: NextRequest) {
       typeof body._actorEducatorId === "string"
         ? body._actorEducatorId.trim()
         : "";
-    if (!(await requireActor(actorId))) {
+    const actor = await requireActor(actorId);
+    if (!actor) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
     }
     const id = body.id?.trim();
@@ -189,6 +252,23 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
+    try {
+      await recordAccountingFixedExpenseAudit({
+        journalDate: invoiceDay,
+        changeType: "removed",
+        label: entry.label,
+        amountCents: entry.amountCents,
+        sourceName: entry.sourceName ?? undefined,
+        note: entry.note ?? undefined,
+        actorId: actor.id,
+        actorName: actor.name,
+        resourceId: entry.id,
+        ip: getClientIp(request) ?? undefined,
+        userAgent: getUserAgent(request) ?? undefined,
+      });
+    } catch (e) {
+      console.error("Audit compta (dépense fixe supprimée):", e);
+    }
     await deleteFixedExpenseEntry(id);
     return NextResponse.json({ ok: true });
   } catch {
