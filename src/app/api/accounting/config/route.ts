@@ -9,6 +9,8 @@ import {
   setAccountingConfig,
 } from "@/lib/store-accounting";
 import type { EmployerContributionMethod } from "@/types";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
+import { recordAccountingConfigChangeAudit } from "@/lib/accounting-registry";
 
 export async function GET(request: NextRequest) {
   try {
@@ -66,6 +68,7 @@ export async function PUT(request: NextRequest) {
       qcRqapEmployerPercent?: number;
       qcFssEmployerPercent?: number;
       qcCnesstEmployerPercent?: number;
+      sickLeaveIndemnityPercent?: number;
     } = {};
     if (typeof body.dailyChildRateCents === "number") {
       updates.dailyChildRateCents = body.dailyChildRateCents;
@@ -100,8 +103,24 @@ export async function PUT(request: NextRequest) {
     if (typeof body.qcCnesstEmployerPercent === "number") {
       updates.qcCnesstEmployerPercent = body.qcCnesstEmployerPercent;
     }
+    if (typeof body.sickLeaveIndemnityPercent === "number") {
+      updates.sickLeaveIndemnityPercent = body.sickLeaveIndemnityPercent;
+    }
 
+    const before = await ensureAccountingConfig();
     const config = await setAccountingConfig(updates);
+    try {
+      await recordAccountingConfigChangeAudit({
+        before,
+        after: config,
+        actorId: actor.id,
+        actorName: actor.name,
+        ip: getClientIp(request) ?? undefined,
+        userAgent: getUserAgent(request) ?? undefined,
+      });
+    } catch (e) {
+      console.error("Audit compta (config):", e);
+    }
     return NextResponse.json(config);
   } catch {
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });

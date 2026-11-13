@@ -36,10 +36,15 @@ type ComparableLine = {
   clockOut: string | null;
   note: string;
   sourceName: string;
+  invoiceDate: string;
+  accountingPeriodStart: string;
+  accountingPeriodEnd: string;
 };
 
 export type AccountingAuditDetail = {
-  journalDate: string;
+  journalDate?: string;
+  /** Registre : journal, fixed_expense, config, petty_cash, weekly_schedule, educator_pay */
+  scope?: string;
   changeType: "modified" | "removed" | "added";
   lineSummary: string;
   changes?: {
@@ -81,6 +86,9 @@ const FIELD_LABELS: Record<string, string> = {
   note: "Note (ligne)",
   sourceName: "Fournisseur / source",
   notes: "Notes du journal",
+  invoiceDate: "Date de facture",
+  accountingPeriodStart: "Période comptable (début)",
+  accountingPeriodEnd: "Période comptable (fin)",
 };
 
 function normClockForAudit(value: string | null | undefined): string | null {
@@ -151,6 +159,11 @@ function toComparable(
     clockOut: normClockForAudit(line.clockOut ?? undefined),
     note: (line.note ?? "").trim(),
     sourceName: (line.sourceName ?? "").trim(),
+    invoiceDate: (line.invoiceDate ?? "").trim().slice(0, 10),
+    accountingPeriodStart: (line.accountingPeriodStart ?? "")
+      .trim()
+      .slice(0, 10),
+    accountingPeriodEnd: (line.accountingPeriodEnd ?? "").trim().slice(0, 10),
   };
 }
 
@@ -184,6 +197,9 @@ function diffLines(
     "label",
     "note",
     "sourceName",
+    "invoiceDate",
+    "accountingPeriodStart",
+    "accountingPeriodEnd",
   ];
   const changes: NonNullable<AccountingAuditDetail["changes"]> = [];
   for (const field of fields) {
@@ -217,6 +233,30 @@ function formatJournalDate(dateStr: string): string {
   }
 }
 
+export async function writeAccountingRegistryEntry(
+  options: {
+    detail: AccountingAuditDetail;
+    actorId: string;
+    actorName: string;
+    action?: string;
+    resourceType?: string;
+    resourceId?: string | null;
+    ip?: string;
+    userAgent?: string;
+  }
+): Promise<void> {
+  await createAuditLog({
+    educatorId: options.actorId,
+    educatorName: options.actorName,
+    action: options.action ?? AUDIT_ACTIONS.ACCOUNTING_JOURNAL_LINE_CHANGED,
+    resourceType: options.resourceType ?? "Accounting",
+    resourceId: options.resourceId ?? null,
+    detail: JSON.stringify(options.detail),
+    ip: options.ip ?? null,
+    userAgent: options.userAgent ?? null,
+  });
+}
+
 async function writeAuditEntry(
   detail: AccountingAuditDetail,
   actorId: string,
@@ -225,15 +265,24 @@ async function writeAuditEntry(
   ip?: string,
   userAgent?: string
 ) {
-  await createAuditLog({
-    educatorId: actorId,
-    educatorName: actorName,
+  await writeAccountingRegistryEntry({
+    detail: { scope: "journal_line", ...detail },
+    actorId,
+    actorName,
     action: AUDIT_ACTIONS.ACCOUNTING_JOURNAL_LINE_CHANGED,
     resourceType: "DailyJournal",
     resourceId: journalId,
-    detail: JSON.stringify(detail),
-    ip: ip ?? null,
-    userAgent: userAgent ?? null,
+    ip,
+    userAgent,
+  });
+}
+
+function journalPayloadSignature(journal: DailyJournal): string {
+  const lines = journal.lines.map((l) => toComparable(l));
+  lines.sort((a, b) => a.fingerprint.localeCompare(b.fingerprint));
+  return JSON.stringify({
+    notes: (journal.notes ?? "").trim(),
+    lines,
   });
 }
 
@@ -246,8 +295,8 @@ async function recordJournalNotesChange(
   journalId: string,
   ip?: string,
   userAgent?: string
-) {
-  if (beforeNotes === afterNotes) return;
+): Promise<boolean> {
+  if (beforeNotes === afterNotes) return false;
   await writeAuditEntry(
     {
       journalDate: dateStr,
@@ -270,6 +319,7 @@ async function recordJournalNotesChange(
     ip,
     userAgent
   );
+  return true;
 }
 
 /** Enregistre une entrée d'audit par ligne modifiée, ajoutée ou supprimée (y compris première saisie du jour). */
@@ -285,6 +335,7 @@ export async function recordAccountingJournalSaveAudit(options: {
   const { dateStr, before, after, actorId, actorName, ip, userAgent } = options;
 
   const afterNotes = (after.notes ?? "").trim();
+  let entryCount = 0;
 
   if (!before) {
     for (const line of after.lines) {
@@ -309,12 +360,33 @@ export async function recordAccountingJournalSaveAudit(options: {
         ip,
         userAgent
       );
+      entryCount += 1;
     }
     if (afterNotes) {
-      await recordJournalNotesChange(
-        dateStr,
-        "",
-        afterNotes,
+      if (
+        await recordJournalNotesChange(
+          dateStr,
+          "",
+          afterNotes,
+          actorId,
+          actorName,
+          after.id,
+          ip,
+          userAgent
+        )
+      ) {
+        entryCount += 1;
+      }
+    }
+    if (entryCount === 0) {
+      await writeAuditEntry(
+        {
+          journalDate: dateStr,
+          scope: "journal_line",
+          changeType: "added",
+          lineSummary: "Première saisie du journal",
+          snapshot: { amountCents: 0 },
+        },
         actorId,
         actorName,
         after.id,
@@ -326,16 +398,20 @@ export async function recordAccountingJournalSaveAudit(options: {
   }
 
   const beforeNotes = (before.notes ?? "").trim();
-  await recordJournalNotesChange(
-    dateStr,
-    beforeNotes,
-    afterNotes,
-    actorId,
-    actorName,
-    after.id,
-    ip,
-    userAgent
-  );
+  if (
+    await recordJournalNotesChange(
+      dateStr,
+      beforeNotes,
+      afterNotes,
+      actorId,
+      actorName,
+      after.id,
+      ip,
+      userAgent
+    )
+  ) {
+    entryCount += 1;
+  }
 
   const beforeMap = new Map(
     before.lines.map((l) => [toComparable(l).fingerprint, toComparable(l)])
@@ -367,6 +443,7 @@ export async function recordAccountingJournalSaveAudit(options: {
         ip,
         userAgent
       );
+      entryCount += 1;
       continue;
     }
     const changes = diffLines(oldLine, newLine) ?? [];
@@ -384,6 +461,7 @@ export async function recordAccountingJournalSaveAudit(options: {
       ip,
       userAgent
     );
+    entryCount += 1;
   }
 
   for (const [fp, newLine] of Array.from(afterMap.entries())) {
@@ -401,6 +479,36 @@ export async function recordAccountingJournalSaveAudit(options: {
           clockIn: newLine.clockIn,
           clockOut: newLine.clockOut,
         },
+      },
+      actorId,
+      actorName,
+      after.id,
+      ip,
+      userAgent
+    );
+    entryCount += 1;
+  }
+
+  if (
+    entryCount === 0 &&
+    journalPayloadSignature(before) !== journalPayloadSignature(after)
+  ) {
+    await writeAuditEntry(
+      {
+        journalDate: dateStr,
+        scope: "journal_line",
+        changeType: "modified",
+        lineSummary: "Modification du journal (registre de secours)",
+        changes: [
+          {
+            field: "journal",
+            fieldLabel: "Contenu du journal",
+            before: before.id,
+            after: after.id,
+            beforeDisplay: `${before.lines.length} ligne(s)`,
+            afterDisplay: `${after.lines.length} ligne(s) — détail non classé automatiquement`,
+          },
+        ],
       },
       actorId,
       actorName,
@@ -431,9 +539,10 @@ export async function recordAccountingFixedExpenseAudit(options: {
   const snapshot = {
     amountCents: options.amountCents,
   };
-  await writeAuditEntry(
-    {
+  await writeAccountingRegistryEntry({
+    detail: {
       journalDate: options.journalDate,
+      scope: "fixed_expense",
       changeType: options.changeType,
       lineSummary,
       snapshot,
@@ -451,12 +560,12 @@ export async function recordAccountingFixedExpenseAudit(options: {
             ]
           : undefined,
     },
-    options.actorId,
-    options.actorName,
-    options.resourceId ?? null,
-    options.ip,
-    options.userAgent
-  );
+    actorId: options.actorId,
+    actorName: options.actorName,
+    resourceId: options.resourceId ?? null,
+    ip: options.ip,
+    userAgent: options.userAgent,
+  });
 }
 
 export async function recordAccountingJournalDeleteAudit(options: {

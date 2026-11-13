@@ -39,7 +39,7 @@ import {
   accountingChangeTypeLabel,
   parseAccountingAuditDetail,
 } from "@/lib/journal-audit";
-import { AUDIT_ACTIONS } from "@/lib/store";
+import { ACCOUNTING_AUDIT_ACTIONS, AUDIT_ACTIONS } from "@/lib/store";
 
 const defaultRules: Partial<VacationRules> = {
   minQualifiedPresent: 1,
@@ -746,6 +746,14 @@ export default function AdminPage() {
         return "Comptabilité — ligne modifiée";
       case "accounting_journal_day_deleted":
         return "Comptabilité — journée supprimée";
+      case "accounting_config_changed":
+        return "Comptabilité — paramètres";
+      case "accounting_petty_cash":
+        return "Comptabilité — petite caisse";
+      case "accounting_weekly_schedule":
+        return "Comptabilité — horaire PDF";
+      case "accounting_educator_pay":
+        return "Comptabilité — fiche paie";
       default:
         return action;
     }
@@ -781,11 +789,11 @@ export default function AdminPage() {
     }
   };
 
+  const accountingActionSet = new Set<string>(ACCOUNTING_AUDIT_ACTIONS);
   const traceabilityLogs = auditLogs.filter(
     (row) =>
       row.action !== "user_login_success" &&
-      row.action !== AUDIT_ACTIONS.ACCOUNTING_JOURNAL_LINE_CHANGED &&
-      row.action !== AUDIT_ACTIONS.ACCOUNTING_JOURNAL_DAY_DELETED
+      !accountingActionSet.has(row.action)
   );
 
   const shortenUserAgent = (ua?: string | null, max = 72) => {
@@ -1686,10 +1694,9 @@ export default function AdminPage() {
       {activeTab === "accountingAudit" && (
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            Historique des modifications comptables : lignes du journal (ajout,
-            suppression, montants, inscriptions, pointage, notes),{" "}
-            <strong>dépenses fixes</strong> du jour, notes du journal, et
-            suppression d&apos;une journée par l&apos;admin. La colonne{" "}
+            Registre complet : journal, dépenses fixes, petite caisse,
+            paramètres comptables, fiches paie (admin), import horaire PDF, et
+            suppression d&apos;une journée. La colonne{" "}
             <strong>Journée</strong> est la date comptable touchée (ex. 16 oct.) ;
             <strong> Date / heure</strong> est le moment où Kamar ou l&apos;admin a
             enregistré.
@@ -1750,16 +1757,23 @@ export default function AdminPage() {
                         </td>
                         <td className="px-3 py-3 sm:px-4">
                           {parsed ? (
-                            <span
-                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                                parsed.changeType === "modified"
-                                  ? "bg-amber-100 text-amber-900"
-                                  : parsed.changeType === "added"
-                                    ? "bg-emerald-100 text-emerald-900"
-                                    : "bg-rose-100 text-rose-900"
-                              }`}
-                            >
-                              {accountingChangeTypeLabel(parsed.changeType)}
+                            <span className="flex flex-col gap-0.5">
+                              <span
+                                className={`inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  parsed.changeType === "modified"
+                                    ? "bg-amber-100 text-amber-900"
+                                    : parsed.changeType === "added"
+                                      ? "bg-emerald-100 text-emerald-900"
+                                      : "bg-rose-100 text-rose-900"
+                                }`}
+                              >
+                                {accountingChangeTypeLabel(parsed.changeType)}
+                              </span>
+                              {parsed.scope ? (
+                                <span className="text-[10px] text-slate-500">
+                                  {parsed.scope.replace(/_/g, " ")}
+                                </span>
+                              ) : null}
                             </span>
                           ) : (
                             auditActionLabel(row.action)

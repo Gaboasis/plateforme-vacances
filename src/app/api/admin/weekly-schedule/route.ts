@@ -9,6 +9,8 @@ import {
   listWeeklySchedules,
   replaceWeeklySchedule,
 } from "@/lib/store-weekly-schedule";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
+import { recordAccountingWeeklyScheduleAudit } from "@/lib/accounting-registry";
 
 export const runtime = "nodejs";
 
@@ -96,6 +98,22 @@ export async function POST(request: NextRequest) {
       entries: matched.entries,
     });
 
+    try {
+      await recordAccountingWeeklyScheduleAudit({
+        changeType: "added",
+        periodStart: schedule.periodStart,
+        periodEnd: schedule.periodEnd,
+        sourceFileName: file.name,
+        actorId: actor.id,
+        actorName: actor.name,
+        resourceId: saved.id,
+        ip: getClientIp(request) ?? undefined,
+        userAgent: getUserAgent(request) ?? undefined,
+      });
+    } catch (e) {
+      console.error("Audit compta (horaire PDF):", e);
+    }
+
     return NextResponse.json({
       schedule: saved,
       employeeCount: schedule.employees.length,
@@ -124,9 +142,31 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const deleted = await deleteWeeklySchedule(scheduleId);
-    if (!deleted) {
+    const educators = await getEducators();
+    const actor = educators.find((e) => e.id === actorId);
+    const schedules = await listWeeklySchedules(50);
+    const existing = schedules.find((s) => s.id === scheduleId);
+    const removed = await deleteWeeklySchedule(scheduleId);
+    if (!removed) {
       return NextResponse.json({ error: "Horaire introuvable." }, { status: 404 });
+    }
+
+    if (actor && existing) {
+      try {
+        await recordAccountingWeeklyScheduleAudit({
+          changeType: "removed",
+          periodStart: existing.periodStart,
+          periodEnd: existing.periodEnd,
+          sourceFileName: existing.sourceFileName,
+          actorId: actor.id,
+          actorName: actor.name,
+          resourceId: existing.id,
+          ip: getClientIp(request) ?? undefined,
+          userAgent: getUserAgent(request) ?? undefined,
+        });
+      } catch (e) {
+        console.error("Audit compta (horaire supprimé):", e);
+      }
     }
 
     return NextResponse.json({ ok: true });

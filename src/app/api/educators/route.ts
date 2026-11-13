@@ -3,6 +3,11 @@ import { createEducator, getEducators, updateEducator } from "@/lib/store";
 import { hashPassword } from "@/lib/auth";
 import { isFullAdmin } from "@/lib/staff-actor";
 import type { Educator } from "@/types";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
+import {
+  diffEducatorPayFields,
+  recordAccountingEducatorPayAudit,
+} from "@/lib/accounting-registry";
 
 function sanitizeEducator(
   e: Educator
@@ -130,7 +135,8 @@ export async function PATCH(request: NextRequest) {
       newPassword?: string;
       _actorEducatorId?: string;
     };
-    if (!(await requireFullAdmin(body))) {
+    const actor = await requireFullAdmin(body);
+    if (!actor) {
       return NextResponse.json({ error: "Non autorisé." }, { status: 403 });
     }
 
@@ -170,11 +176,36 @@ export async function PATCH(request: NextRequest) {
           : parseInt(String(vacationIndemnityPercent), 10);
       if (v === 4 || v === 6) patch.vacationIndemnityPercent = v;
     }
+    const payTouch =
+      hourlyRateCents != null ||
+      employerContributionPercent != null ||
+      vacationIndemnityPercent != null;
+    const before = payTouch
+      ? (await getEducators()).find((e) => e.id === id)
+      : undefined;
     const updated = await updateEducator(id, patch);
     if (!updated) {
       return NextResponse.json({ error: "Éducatrice introuvable" }, {
         status: 404,
       });
+    }
+    if (payTouch && before) {
+      const changes = diffEducatorPayFields(before, updated);
+      if (changes.length > 0) {
+        try {
+          await recordAccountingEducatorPayAudit({
+            educatorId: updated.id,
+            educatorName: updated.name,
+            changes,
+            actorId: actor.id,
+            actorName: actor.name,
+            ip: getClientIp(request) ?? undefined,
+            userAgent: getUserAgent(request) ?? undefined,
+          });
+        } catch (e) {
+          console.error("Audit compta (fiche paie):", e);
+        }
+      }
     }
     return NextResponse.json(sanitizeEducator(updated));
   } catch {

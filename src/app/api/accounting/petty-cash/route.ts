@@ -9,6 +9,8 @@ import {
 } from "@/lib/store-petty-cash";
 import { getEducators } from "@/lib/store";
 import { parseCadInput } from "@/lib/money";
+import { getClientIp, getUserAgent } from "@/lib/audit-context";
+import { recordAccountingPettyCashAudit } from "@/lib/accounting-registry";
 
 async function requireActor(actorId: string | undefined) {
   const educators = await getEducators();
@@ -97,6 +99,23 @@ export async function POST(request: NextRequest) {
       actorId: actor.id,
       actorName: actor.name,
     });
+
+    try {
+      await recordAccountingPettyCashAudit({
+        transactionDate,
+        direction,
+        amountCents,
+        note: typeof body.note === "string" ? body.note : undefined,
+        changeType: "added",
+        actorId: actor.id,
+        actorName: actor.name,
+        resourceId: transaction.id,
+        ip: getClientIp(request) ?? undefined,
+        userAgent: getUserAgent(request) ?? undefined,
+      });
+    } catch (e) {
+      console.error("Audit compta (petite caisse):", e);
+    }
 
     const [balanceCents, openingBalanceCents] = await Promise.all([
       getPettyCashBalanceCents(),
