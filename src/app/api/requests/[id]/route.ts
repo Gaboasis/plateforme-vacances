@@ -98,6 +98,16 @@ export async function PATCH(
       isAppealPending &&
       (status === "accepted" || status === "rejected");
 
+    if (isAppealDecision && !isFullAdmin(staffActor)) {
+      return NextResponse.json(
+        {
+          error:
+            "Seul l’administrateur peut accepter ou refuser définitivement une urgence motivée (révision après refus automatique).",
+        },
+        { status: 403 }
+      );
+    }
+
     if (isAppealDecision) {
       const msg =
         typeof adminAppealMessage === "string" ? adminAppealMessage.trim() : "";

@@ -80,6 +80,7 @@ export default function AdminPage() {
   const [loginLogs, setLoginLogs] = useState<ActivityAuditLogEntry[]>([]);
   const [dayOffSwaps, setDayOffSwaps] = useState<DayOffSwapRequest[]>([]);
   const [comptaTraceJournalFilter, setComptaTraceJournalFilter] = useState("");
+  const [isFullAdminSession, setIsFullAdminSession] = useState(false);
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
   const [expandedLoginId, setExpandedLoginId] = useState<string | null>(null);
   const [newBlackoutDate, setNewBlackoutDate] = useState("");
@@ -106,6 +107,17 @@ export default function AdminPage() {
   });
   const [addEducatorError, setAddEducatorError] = useState("");
   const [addingEducator, setAddingEducator] = useState(false);
+
+  useEffect(() => {
+    try {
+      const u = JSON.parse(
+        sessionStorage.getItem("user") || "{}"
+      ) as { role?: string };
+      setIsFullAdminSession(u?.role === "admin");
+    } catch {
+      setIsFullAdminSession(false);
+    }
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -929,8 +941,11 @@ export default function AdminPage() {
           </p>
           <p className="mt-1 text-sm text-amber-700">
             {pendingCount > 0 && "Ces demandes concernent la dernière place autorisée. "}
-            {appealPendingCount > 0 && "Des éducatrices ont soumis une raison d'urgence. "}
-            Acceptez ou refusez depuis l&apos;onglet Demandes.
+            {appealPendingCount > 0 &&
+              (isFullAdminSession
+                ? "Des éducatrices ont soumis une raison d'urgence. Acceptez ou refusez depuis l'onglet Demandes."
+                : "Des urgences motivées sont en attente — seul l'administrateur peut les accepter ou les refuser.")}
+            {appealPendingCount === 0 && "Acceptez ou refusez depuis l'onglet Demandes."}
           </p>
           <button
             onClick={() => setActiveTab("requests")}
@@ -1263,7 +1278,17 @@ export default function AdminPage() {
                             )}
                             {req.status === "rejected" &&
                               req.urgentAppealReason &&
-                              !req.appealReviewedAt && (
+                              !req.appealReviewedAt &&
+                              !isFullAdminSession && (
+                                <p className="text-sm text-amber-900 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                                  Urgence motivée en attente — décision réservée à
+                                  l&apos;administrateur (pas au bureau / compta).
+                                </p>
+                              )}
+                            {req.status === "rejected" &&
+                              req.urgentAppealReason &&
+                              !req.appealReviewedAt &&
+                              isFullAdminSession && (
                               <div className="flex gap-2 flex-wrap">
                                 <button
                                   type="button"
